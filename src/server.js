@@ -271,6 +271,33 @@ function buildAlert({ trip, stop, risk, route, kind = "platform_change" }) {
   return alert;
 }
 
+function evaluateTripAlert(trip, stop) {
+  const route = getRoute(trip.boardingStationCode, trip.currentAreaId, stop.currentPlatform, trip.mobilityProfile);
+  const station = findStation(trip.boardingStationCode);
+  const walkingMinutes = computeWalkingMinutes(route, trip.mobilityProfile, station?.congestionScore ?? 0);
+  const risk = computeTripRisk({
+    departureAt: stop.predictedDeparture ?? stop.scheduledDeparture,
+    walkingMinutes,
+    platformChanged: stop.previousPlatform && stop.previousPlatform !== stop.currentPlatform,
+    confidence: stop.confidence,
+    platformNumber: stop.currentPlatform,
+    mobilityProfile: trip.mobilityProfile,
+    emergencyMode: trip.trackingMode === "emergency",
+    now: new Date()
+  });
+
+  if (shouldCreateAlert({
+    risk,
+    confidence: stop.confidence,
+    platformChanged: stop.previousPlatform && stop.previousPlatform !== stop.currentPlatform,
+    dataStale: false
+  })) {
+    return buildAlert({ trip, stop, risk, route });
+  }
+
+  return null;
+}
+
 function refreshTripAlerts(stop) {
   const run = state.trainRuns.find((item) => item.id === stop.trainRunId);
   const affectedTrips = state.trips.filter((trip) => (
@@ -280,28 +307,7 @@ function refreshTripAlerts(stop) {
   ));
 
   for (const trip of affectedTrips) {
-    const route = getRoute(trip.boardingStationCode, trip.currentAreaId, stop.currentPlatform, trip.mobilityProfile);
-    const station = findStation(trip.boardingStationCode);
-    const walkingMinutes = computeWalkingMinutes(route, trip.mobilityProfile, station?.congestionScore ?? 0);
-    const risk = computeTripRisk({
-      departureAt: stop.predictedDeparture ?? stop.scheduledDeparture,
-      walkingMinutes,
-      platformChanged: stop.previousPlatform && stop.previousPlatform !== stop.currentPlatform,
-      confidence: stop.confidence,
-      platformNumber: stop.currentPlatform,
-      mobilityProfile: trip.mobilityProfile,
-      emergencyMode: trip.trackingMode === "emergency",
-      now: new Date()
-    });
-
-    if (shouldCreateAlert({
-      risk,
-      confidence: stop.confidence,
-      platformChanged: stop.previousPlatform && stop.previousPlatform !== stop.currentPlatform,
-      dataStale: false
-    })) {
-      buildAlert({ trip, stop, risk, route });
-    }
+    evaluateTripAlert(trip, stop);
   }
 
   publish("platform.resolved", {
@@ -421,10 +427,10 @@ export async function handleApi(request, response) {
     return;
   }
 
-  if (method === "POST" && requestUrl.pathname === "/api/reset-demo") {
+  if (method === "POST" && requestUrl.pathname === "/api/reset-data") {
     Object.assign(state, createSeedData(new Date()));
     const payload = buildBootstrap();
-    publish("demo.reset", payload);
+    publish("data.reset", payload);
     sendJson(response, 200, payload);
     return;
   }
@@ -467,6 +473,13 @@ export async function handleApi(request, response) {
       createdAt: new Date().toISOString()
     };
     state.trips.unshift(trip);
+    const stop = state.trainRunStops.find((item) => (
+      item.trainRunId === trip.trainRunId &&
+      item.stationCode === trip.boardingStationCode
+    ));
+    if (stop) {
+      evaluateTripAlert(trip, stop);
+    }
     const payload = buildTripCard(trip);
     publish("trip.created", payload);
     sendJson(response, 201, payload);

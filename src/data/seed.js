@@ -195,59 +195,9 @@ export function createSeedData(now = new Date()) {
     }
   ];
 
-  const users = [
-    {
-      id: "user-demo",
-      displayName: "Asha Mehta",
-      preferredLanguage: "en",
-      trustScore: 0.66,
-      emergencyModeEnabled: false
-    }
-  ];
-
-  const trips = [
-    {
-      id: "trip-demo-12952",
-      userId: "user-demo",
-      passengerName: "Asha Mehta",
-      trainRunId: "run-12952-today",
-      trainNumber: "12952",
-      boardingStationCode: "NDLS",
-      destinationStationCode: "CSMT",
-      coach: "B4",
-      berth: "36",
-      familyGroupName: "Mehta Family",
-      mobilityProfile: "luggage",
-      currentAreaId: "entrance-ajmeri",
-      trackingMode: "family",
-      status: "active",
-      createdAt: minutesFrom(now, -60)
-    }
-  ];
-
-  const alerts = [
-    {
-      id: "alert-demo-1",
-      tripId: "trip-demo-12952",
-      trainRunStopId: "stop-12952-ndls",
-      trainNumber: "12952",
-      trainName: "Mumbai Rajdhani Express",
-      passengerName: "Asha Mehta",
-      stationCode: "NDLS",
-      previousPlatform: "5",
-      currentPlatform: "8",
-      platformStateVersion: 2,
-      kind: "platform_change",
-      severity: "urgent",
-      title: "12952: Platform 5 -> 8 at NDLS",
-      body: "Asha Mehta, train 12952 Mumbai Rajdhani Express is now assigned to Platform 8 at NDLS. Previous platform was 5. Head toward Platform 8 and recheck the board before the footbridge. 93% confidence. Departure in 28 min; walking estimate 11 min. Route starts toward Main Concourse. Verify once on the next station display board while moving.",
-      shortBody: "Train 12952 at NDLS: Platform 8, changed from 5.",
-      confidence: 0.93,
-      idempotencyKey: "trip-demo-12952:2:platform_change",
-      acknowledged: false,
-      createdAt: minutesFrom(now, -1)
-    }
-  ];
+  const users = [];
+  const trips = [];
+  const alerts = [];
 
   return {
     schemaVersion: 1,

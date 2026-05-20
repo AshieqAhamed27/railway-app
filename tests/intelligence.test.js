@@ -74,7 +74,7 @@ test("crowd report scoring accepts fresh nearby display-board evidence", () => {
 
 test("platform notification includes train number and platform change", () => {
   const notification = composePlatformNotification({
-    passengerName: "Asha Mehta",
+    passengerName: "Passenger",
     trainNumber: "12952",
     trainName: "Mumbai Rajdhani Express",
     stationCode: "NDLS",

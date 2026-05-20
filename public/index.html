@@ -15,7 +15,7 @@
         </div>
         <div class="topbar-actions">
           <span class="live-indicator" id="connectionStatus">Connecting</span>
-          <button class="ghost-button" id="resetDemoButton" type="button">Reset Demo</button>
+          <button class="ghost-button" id="resetDataButton" type="button">Reset Data</button>
         </div>
       </header>
 
@@ -35,7 +35,7 @@
             </label>
             <label>
               Passenger
-              <input name="passengerName" value="New Passenger" autocomplete="off">
+              <input name="passengerName" autocomplete="off">
             </label>
             <div class="split-fields">
               <label>
@@ -50,7 +50,7 @@
             <div class="split-fields">
               <label>
                 Coach
-                <input name="coach" value="B2" autocomplete="off">
+                <input name="coach" autocomplete="off">
               </label>
               <label>
                 Mobility
@@ -70,9 +70,9 @@
         <section class="main-column">
           <section class="hero-status" id="heroStatus">
             <div>
-              <p class="eyebrow" id="heroTrain">Loading</p>
-              <h2 id="heroTitle">Resolving platform state</h2>
-              <p id="heroAction" class="next-action">Loading trip intelligence.</p>
+              <p class="eyebrow" id="heroTrain">No active journey</p>
+              <h2 id="heroTitle">Add a journey to monitor platform changes</h2>
+              <p id="heroAction" class="next-action">Enter the passenger train details to receive platform-change alerts with train number, station, confidence, and next action.</p>
             </div>
             <div class="platform-tile" aria-label="Current platform">
               <span>Platform</span>

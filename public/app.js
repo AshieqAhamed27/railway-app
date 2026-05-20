@@ -6,7 +6,7 @@ const state = {
 
 const els = {
   connectionStatus: document.querySelector("#connectionStatus"),
-  resetDemoButton: document.querySelector("#resetDemoButton"),
+  resetDataButton: document.querySelector("#resetDataButton"),
   activeTripCount: document.querySelector("#activeTripCount"),
   tripList: document.querySelector("#tripList"),
   addTripForm: document.querySelector("#addTripForm"),
@@ -109,7 +109,7 @@ function renderSelects() {
 function renderTrips() {
   const cards = state.bootstrap?.tripCards ?? [];
   els.activeTripCount.textContent = `${cards.length} active`;
-  els.tripList.innerHTML = cards.map((card) => {
+  els.tripList.innerHTML = cards.length ? cards.map((card) => {
     const selected = card.trip.id === state.selectedTripId;
     const severity = card.risk.severity;
     return `
@@ -119,7 +119,30 @@ function renderTrips() {
         <span class="badge ${severity}">${severity.toUpperCase()} · Platform ${card.platformState.currentPlatform}</span>
       </button>
     `;
-  }).join("");
+  }).join("") : `<div class="timeline-item"><strong>No active trips</strong><small>Add a journey to start platform monitoring.</small></div>`;
+}
+
+function renderEmptyState() {
+  els.heroTrain.textContent = "No active journey";
+  els.heroTitle.textContent = "Add a journey to monitor platform changes";
+  els.heroAction.textContent = "Enter the passenger train details to receive platform-change alerts with train number, station, confidence, and next action.";
+  els.currentPlatform.textContent = "--";
+  els.platformConfidence.textContent = "Waiting for journey";
+  els.riskBadge.textContent = "--";
+  els.riskBadge.className = "badge";
+  els.departureMetric.textContent = "--";
+  els.walkMetric.textContent = "--";
+  els.marginMetric.textContent = "--";
+  els.confidenceBar.style.width = "0%";
+  els.routeSummary.textContent = "--";
+  els.stationMap.innerHTML = "";
+  els.routeSteps.innerHTML = "";
+  els.timeline.innerHTML = `<div class="timeline-item"><strong>No evidence yet</strong><small>Evidence appears after a journey is added.</small></div>`;
+  els.stateVersion.textContent = "v--";
+  els.alertCount.textContent = "0";
+  els.alerts.innerHTML = `<div class="alert-item"><strong>No active alerts</strong><small>Alerts appear when a platform changes or risk increases.</small></div>`;
+  els.crowdPlatform.value = "";
+  els.opsPlatform.value = "";
 }
 
 function renderHero(card) {
@@ -230,14 +253,17 @@ function render() {
   if (!state.bootstrap) return;
   renderSelects();
   renderTrips();
+  renderOps();
   const card = selectedCard();
-  if (!card) return;
+  if (!card) {
+    renderEmptyState();
+    return;
+  }
   renderHero(card);
   renderMap(card);
   renderRoute(card);
   renderTimeline(card);
   renderAlerts(card);
-  renderOps();
 }
 
 function setupEvents() {
@@ -267,7 +293,10 @@ function setupEvents() {
   els.crowdForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const card = selectedCard();
-    if (!card) return;
+    if (!card) {
+      showToast("Add a journey before submitting a crowd report");
+      return;
+    }
     const form = new FormData(els.crowdForm);
     const body = {
       tripId: card.trip.id,
@@ -292,7 +321,10 @@ function setupEvents() {
   els.opsForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const card = selectedCard();
-    if (!card) return;
+    if (!card) {
+      showToast("Add a journey before publishing a platform event");
+      return;
+    }
     const form = new FormData(els.opsForm);
     const body = {
       trainNumber: card.train.trainNumber,
@@ -326,12 +358,12 @@ function setupEvents() {
     }
   });
 
-  els.resetDemoButton.addEventListener("click", async () => {
+  els.resetDataButton.addEventListener("click", async () => {
     try {
-      await api("/api/reset-demo", { method: "POST" });
+      await api("/api/reset-data", { method: "POST" });
       state.selectedTripId = null;
       await refresh();
-      showToast("Demo reset");
+      showToast("Data reset");
     } catch (error) {
       showToast(error.message);
     }
@@ -346,7 +378,7 @@ function connectRealtime() {
   events.addEventListener("heartbeat", () => {
     els.connectionStatus.textContent = "Live";
   });
-  for (const eventName of ["platform.resolved", "alert.created", "crowd.reported", "trip.created", "demo.reset"]) {
+  for (const eventName of ["platform.resolved", "alert.created", "crowd.reported", "trip.created", "data.reset"]) {
     events.addEventListener(eventName, async () => {
       await refresh();
     });
