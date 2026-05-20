@@ -47,6 +47,17 @@ function badRequest(response, message, details = {}) {
 }
 
 async function readJson(request) {
+  if (request.body !== undefined) {
+    if (typeof request.body === "string") {
+      return request.body ? JSON.parse(request.body) : {};
+    }
+    if (Buffer.isBuffer(request.body)) {
+      const body = request.body.toString("utf8");
+      return body ? JSON.parse(body) : {};
+    }
+    return request.body ?? {};
+  }
+
   let body = "";
   for await (const chunk of request) {
     body += chunk;
@@ -374,7 +385,7 @@ async function serveStatic(request, response) {
   }
 }
 
-async function handleApi(request, response) {
+export async function handleApi(request, response) {
   const requestUrl = new URL(request.url, `http://${request.headers.host}`);
   const method = request.method ?? "GET";
 

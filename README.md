@@ -22,6 +22,24 @@ npm run build
 npm test
 ```
 
+## Deploy On Vercel
+
+This app is configured for Vercel with:
+
+- `public/` served as static frontend files.
+- `api/index.js` as the Vercel Function adapter for `/api/*`.
+- `api/events.js` as a lightweight Server-Sent Events compatibility endpoint.
+- `vercel.json` rewrites for `/api/:path*` and `/events`.
+
+Deploy from the project root:
+
+```bash
+npm run build
+vercel --prod
+```
+
+In the Vercel dashboard, keep the default static/build settings and do not set the start command to `npm start`. Vercel runs the API files as Functions instead of running a long-lived Node server.
+
 ## Files
 
 - `RAILWAY_INTELLIGENCE_PLATFORM_ARCHITECTURE.md` - full system architecture, data platform, AI pipeline, realtime notification pipeline, reliability model, rollout plan, moat strategy, legal and partnership requirements.
