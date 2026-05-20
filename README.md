@@ -1,0 +1,52 @@
+# India Railway Intelligence Platform
+
+Mission: eliminate platform confusion and missed trains caused by last-minute platform changes.
+
+This repository now includes a runnable full-stack pilot application plus the original production architecture pack. The app focuses on the highest-value passenger workflow: live platform state, confidence/provenance, station walking risk, crowd confirmation, alerting, and an operator input surface.
+
+## Run The App
+
+```bash
+npm install
+npm start
+```
+
+Open `http://127.0.0.1:4173`.
+
+No third-party runtime packages are required; the backend uses Node's built-in HTTP server and Server-Sent Events.
+
+## Verify
+
+```bash
+npm run build
+npm test
+```
+
+## Files
+
+- `RAILWAY_INTELLIGENCE_PLATFORM_ARCHITECTURE.md` - full system architecture, data platform, AI pipeline, realtime notification pipeline, reliability model, rollout plan, moat strategy, legal and partnership requirements.
+- `database_schema.sql` - initial relational and time-series schema for PostgreSQL plus TimescaleDB.
+- `src/server.js` - full-stack Node server, REST API, realtime event stream, routing and alert orchestration.
+- `src/domain/intelligence.js` - confidence scoring, crowd trust scoring, platform reconciliation, and trip-risk logic.
+- `src/data/seed.js` - realistic pilot data for NDLS and active train trips.
+- `public/` - passenger operations frontend.
+- `tests/` - Node test coverage for the core intelligence rules.
+
+## Architecture Bias
+
+The design prioritizes:
+
+- source provenance over blind aggregation
+- correctness and alert reliability over feature count
+- event-driven realtime propagation
+- official railway partnerships as the durable data foundation
+- crowdsourcing as verification, not as primary authority
+- conservative passenger messaging when confidence is incomplete
+- station-by-station operational rollout before national expansion
+
+## Official Baseline Sources
+
+- CRIS states that NTES disseminates near real-time passenger train running information for Indian Railways: https://cris.org.in/loadpage?page=proNTES
+- Press Information Bureau notes NTES is developed by CRIS and collects train running information on a near real-time basis: https://www.pib.gov.in/newsite/PrintRelease.aspx?relid=99159
+- CRIS describes itself as an organization under the Ministry of Railways and references national-scale enquiry/ticketing workloads: https://cris.org.in/
+- India Code publishes the Digital Personal Data Protection Act, 2023 text: https://www.indiacode.nic.in/bitstream/123456789/22037/1/a2023-22.pdf

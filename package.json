@@ -1,0 +1,16 @@
+{
+  "name": "railway-intelligence-platform",
+  "version": "1.0.0",
+  "description": "Realtime railway platform-change intelligence pilot for India.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "build": "node --check src/server.js && node --check src/data/seed.js && node --check src/domain/intelligence.js && node --check public/app.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
