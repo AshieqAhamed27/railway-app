@@ -459,12 +459,29 @@ button {
 }
 
 .offer-card {
+  align-items: flex-start;
   background: #fbfaf6;
   border: 1px solid var(--line);
   border-radius: 7px;
-  display: grid;
+  display: flex;
   gap: 5px;
   padding: 10px;
+}
+
+.offer-card.selected {
+  border-color: var(--rail);
+  box-shadow: inset 3px 0 0 var(--rail);
+}
+
+.offer-card input {
+  margin: 3px 6px 0 0;
+  min-height: auto;
+  width: auto;
+}
+
+.offer-card span {
+  display: grid;
+  gap: 5px;
 }
 
 .offer-card strong {

@@ -3,10 +3,186 @@ function minutesFrom(now, minutes) {
 }
 
 function isoDate(now) {
-  return now.toISOString().slice(0, 10);
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(now);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function station({ code, name, city, state, congestionScore, platforms }) {
+  return {
+    id: `station-${code.toLowerCase()}`,
+    code,
+    name,
+    city,
+    state,
+    congestionScore,
+    platforms,
+    areas: [],
+    edges: []
+  };
+}
+
+function train({ trainNumber, name, serviceType, origin, destination }) {
+  return {
+    id: `train-${trainNumber}`,
+    trainNumber,
+    name,
+    serviceType,
+    origin,
+    destination
+  };
+}
+
+function run({ trainNumber, serviceDate, status = "scheduled", delaySeconds = 0 }) {
+  return {
+    id: `run-${trainNumber}-today`,
+    trainId: `train-${trainNumber}`,
+    trainNumber,
+    serviceDate,
+    status,
+    currentDelaySeconds: delaySeconds
+  };
+}
+
+function confidenceLevel(score) {
+  if (score >= 0.9) return "critical";
+  if (score >= 0.75) return "high";
+  if (score >= 0.55) return "medium";
+  if (score >= 0.35) return "low";
+  return "very_low";
+}
+
+function platformStop(now, options) {
+  const {
+    trainNumber,
+    stationCode,
+    stopSequence = 1,
+    departInMinutes,
+    delayMinutes = 0,
+    plannedPlatform,
+    currentPlatform = plannedPlatform,
+    previousPlatform = null,
+    confidence = currentPlatform !== plannedPlatform ? 0.92 : 0.82,
+    sourceName,
+    stateKind = currentPlatform !== plannedPlatform ? "official_changed" : "official_confirmed",
+    observedAgoMinutes = 5
+  } = options;
+  const changed = Boolean(previousPlatform && previousPlatform !== currentPlatform);
+  const newestObservedAt = minutesFrom(now, -observedAgoMinutes);
+  const events = changed ? [
+    {
+      id: `evt-planned-${trainNumber}-${stationCode.toLowerCase()}`,
+      sourceKind: "official_ntes",
+      sourceName: "NTES planned board",
+      platformNumber: previousPlatform,
+      assignmentKind: "planned",
+      sourceConfidence: 0.82,
+      observedAt: minutesFrom(now, -38),
+      createdAt: minutesFrom(now, -38),
+      summary: "Initial planned platform published."
+    },
+    {
+      id: `evt-station-${trainNumber}-${stationCode.toLowerCase()}`,
+      sourceKind: "official_station",
+      sourceName,
+      platformNumber: currentPlatform,
+      assignmentKind: "changed",
+      sourceConfidence: 0.97,
+      observedAt: newestObservedAt,
+      createdAt: newestObservedAt,
+      summary: `${stationCode} station display changed the train to Platform ${currentPlatform}.`
+    },
+    {
+      id: `evt-crowd-${trainNumber}-${stationCode.toLowerCase()}`,
+      sourceKind: "crowd",
+      sourceName: "Trusted passengers near platform bridge",
+      platformNumber: currentPlatform,
+      assignmentKind: "confirmed",
+      sourceConfidence: 0.69,
+      observedAt: minutesFrom(now, -Math.max(1, observedAgoMinutes - 1)),
+      createdAt: minutesFrom(now, -Math.max(1, observedAgoMinutes - 1)),
+      summary: `Accepted crowd reports confirm Platform ${currentPlatform}.`
+    }
+  ] : [
+    {
+      id: `evt-station-${trainNumber}-${stationCode.toLowerCase()}`,
+      sourceKind: "official_station",
+      sourceName,
+      platformNumber: currentPlatform,
+      assignmentKind: "confirmed",
+      sourceConfidence: 0.92,
+      observedAt: newestObservedAt,
+      createdAt: newestObservedAt,
+      summary: `${stationCode} station display confirms Platform ${currentPlatform}.`
+    }
+  ];
+
+  return {
+    id: `stop-${trainNumber}-${stationCode.toLowerCase()}`,
+    trainRunId: `run-${trainNumber}-today`,
+    stationCode,
+    stopSequence,
+    scheduledDeparture: minutesFrom(now, departInMinutes),
+    predictedDeparture: minutesFrom(now, departInMinutes + delayMinutes),
+    plannedPlatform,
+    currentPlatform,
+    previousPlatform,
+    platformStateVersion: changed ? 2 : 1,
+    confidence,
+    confidenceLevel: confidenceLevel(confidence),
+    stateKind,
+    newestObservedAt,
+    events
+  };
+}
+
+function offer(now, serviceDate, options) {
+  const {
+    id,
+    trainNumber,
+    fromStationCode,
+    toStationCode,
+    classCode,
+    capacity,
+    availableSeats,
+    waitlist = 0,
+    fare,
+    coachPrefix,
+    seatsPerCoach,
+    departInMinutes,
+    journeyHours,
+    quota = "GN",
+    currency = "INR"
+  } = options;
+
+  return {
+    id,
+    trainNumber,
+    serviceDate,
+    fromStationCode,
+    toStationCode,
+    classCode,
+    quota,
+    capacity,
+    availableSeats,
+    waitlist,
+    fare,
+    currency,
+    coachPrefix,
+    seatsPerCoach,
+    departureAt: minutesFrom(now, departInMinutes),
+    arrivalAt: minutesFrom(now, departInMinutes + Math.round(journeyHours * 60)),
+    journeyHours
+  };
 }
 
 export function createSeedData(now = new Date()) {
+  const serviceDate = isoDate(now);
   const stations = [
     {
       id: "station-ndls",
@@ -42,205 +218,110 @@ export function createSeedData(now = new Date()) {
         { from: "concourse-main", to: "helpdesk", mode: "walk", distanceMeters: 70, expectedSeconds: 80, accessible: true }
       ]
     },
-    {
-      id: "station-csmt",
-      code: "CSMT",
-      name: "Mumbai CSMT",
-      city: "Mumbai",
-      state: "Maharashtra",
-      congestionScore: 0.58,
-      platforms: ["6", "8", "12", "15", "18"],
-      areas: [],
-      edges: []
-    },
-    {
-      id: "station-hwh",
-      code: "HWH",
-      name: "Howrah Junction",
-      city: "Howrah",
-      state: "West Bengal",
-      congestionScore: 0.61,
-      platforms: ["7", "9", "14", "18", "21"],
-      areas: [],
-      edges: []
-    },
-    {
-      id: "station-rkmp",
-      code: "RKMP",
-      name: "Rani Kamlapati",
-      city: "Bhopal",
-      state: "Madhya Pradesh",
-      congestionScore: 0.35,
-      platforms: ["1", "2", "3", "4", "5"],
-      areas: [],
-      edges: []
-    }
+    station({ code: "NZM", name: "Hazrat Nizamuddin", city: "Delhi", state: "Delhi", congestionScore: 0.52, platforms: ["1", "2", "3", "5", "7"] }),
+    station({ code: "DLI", name: "Old Delhi", city: "Delhi", state: "Delhi", congestionScore: 0.58, platforms: ["1", "3", "5", "8", "12"] }),
+    station({ code: "DEE", name: "Delhi Sarai Rohilla", city: "Delhi", state: "Delhi", congestionScore: 0.42, platforms: ["1", "2", "3", "4"] }),
+    station({ code: "MMCT", name: "Mumbai Central", city: "Mumbai", state: "Maharashtra", congestionScore: 0.56, platforms: ["1", "2", "4", "6", "8"] }),
+    station({ code: "CSMT", name: "Mumbai CSMT", city: "Mumbai", state: "Maharashtra", congestionScore: 0.58, platforms: ["6", "8", "12", "15", "18"] }),
+    station({ code: "PUNE", name: "Pune Junction", city: "Pune", state: "Maharashtra", congestionScore: 0.44, platforms: ["1", "2", "3", "5", "6"] }),
+    station({ code: "HWH", name: "Howrah Junction", city: "Howrah", state: "West Bengal", congestionScore: 0.61, platforms: ["7", "9", "14", "18", "21"] }),
+    station({ code: "PNBE", name: "Patna Junction", city: "Patna", state: "Bihar", congestionScore: 0.55, platforms: ["1", "3", "6", "8", "10"] }),
+    station({ code: "DNR", name: "Danapur", city: "Patna", state: "Bihar", congestionScore: 0.41, platforms: ["1", "2", "3", "5"] }),
+    station({ code: "RKMP", name: "Rani Kamlapati", city: "Bhopal", state: "Madhya Pradesh", congestionScore: 0.35, platforms: ["1", "2", "3", "4", "5"] }),
+    station({ code: "MAS", name: "MGR Chennai Central", city: "Chennai", state: "Tamil Nadu", congestionScore: 0.57, platforms: ["3", "5", "6", "8", "10"] }),
+    station({ code: "SBC", name: "KSR Bengaluru", city: "Bengaluru", state: "Karnataka", congestionScore: 0.54, platforms: ["1", "3", "5", "7", "10"] }),
+    station({ code: "SMVB", name: "Sir M. Visvesvaraya Terminal Bengaluru", city: "Bengaluru", state: "Karnataka", congestionScore: 0.39, platforms: ["1", "2", "4", "6"] }),
+    station({ code: "SC", name: "Secunderabad Junction", city: "Hyderabad", state: "Telangana", congestionScore: 0.51, platforms: ["1", "4", "6", "8", "10"] }),
+    station({ code: "HYB", name: "Hyderabad Deccan", city: "Hyderabad", state: "Telangana", congestionScore: 0.46, platforms: ["1", "2", "4", "5", "6"] }),
+    station({ code: "ADI", name: "Ahmedabad Junction", city: "Ahmedabad", state: "Gujarat", congestionScore: 0.48, platforms: ["1", "2", "4", "7", "9"] }),
+    station({ code: "JP", name: "Jaipur Junction", city: "Jaipur", state: "Rajasthan", congestionScore: 0.43, platforms: ["1", "2", "3", "5", "6"] }),
+    station({ code: "AII", name: "Ajmer Junction", city: "Ajmer", state: "Rajasthan", congestionScore: 0.36, platforms: ["1", "2", "3", "4", "5"] }),
+    station({ code: "LKO", name: "Lucknow Charbagh", city: "Lucknow", state: "Uttar Pradesh", congestionScore: 0.53, platforms: ["1", "3", "5", "7", "9"] }),
+    station({ code: "BBS", name: "Bhubaneswar", city: "Bhubaneswar", state: "Odisha", congestionScore: 0.4, platforms: ["1", "2", "3", "4", "6"] }),
+    station({ code: "PURI", name: "Puri", city: "Puri", state: "Odisha", congestionScore: 0.34, platforms: ["1", "2", "3", "4"] }),
+    station({ code: "ERS", name: "Ernakulam Junction", city: "Kochi", state: "Kerala", congestionScore: 0.42, platforms: ["1", "2", "3", "4", "5"] }),
+    station({ code: "TVC", name: "Thiruvananthapuram Central", city: "Thiruvananthapuram", state: "Kerala", congestionScore: 0.38, platforms: ["1", "2", "3", "4", "5"] })
   ];
 
   const trains = [
-    {
-      id: "train-12952",
-      trainNumber: "12952",
-      name: "Mumbai Rajdhani Express",
-      serviceType: "Rajdhani",
-      origin: "NDLS",
-      destination: "CSMT"
-    },
-    {
-      id: "train-12002",
-      trainNumber: "12002",
-      name: "Bhopal Shatabdi Express",
-      serviceType: "Shatabdi",
-      origin: "NDLS",
-      destination: "RKMP"
-    },
-    {
-      id: "train-12301",
-      trainNumber: "12301",
-      name: "Howrah Rajdhani Express",
-      serviceType: "Rajdhani",
-      origin: "HWH",
-      destination: "NDLS"
-    }
+    train({ trainNumber: "12952", name: "Mumbai Central Tejas Rajdhani Express", serviceType: "Rajdhani", origin: "NDLS", destination: "MMCT" }),
+    train({ trainNumber: "12951", name: "Mumbai Central Tejas Rajdhani Express", serviceType: "Rajdhani", origin: "MMCT", destination: "NDLS" }),
+    train({ trainNumber: "12002", name: "Bhopal Shatabdi Express", serviceType: "Shatabdi", origin: "NDLS", destination: "RKMP" }),
+    train({ trainNumber: "12001", name: "Bhopal Shatabdi Express", serviceType: "Shatabdi", origin: "RKMP", destination: "NDLS" }),
+    train({ trainNumber: "12301", name: "Howrah Rajdhani Express", serviceType: "Rajdhani", origin: "HWH", destination: "NDLS" }),
+    train({ trainNumber: "12302", name: "Howrah Rajdhani Express", serviceType: "Rajdhani", origin: "NDLS", destination: "HWH" }),
+    train({ trainNumber: "12615", name: "Grand Trunk Express", serviceType: "Superfast", origin: "MAS", destination: "NDLS" }),
+    train({ trainNumber: "12616", name: "Grand Trunk Express", serviceType: "Superfast", origin: "NDLS", destination: "MAS" }),
+    train({ trainNumber: "12627", name: "Karnataka Express", serviceType: "Superfast", origin: "SBC", destination: "NDLS" }),
+    train({ trainNumber: "12628", name: "Karnataka Express", serviceType: "Superfast", origin: "NDLS", destination: "SBC" }),
+    train({ trainNumber: "12723", name: "Telangana Express", serviceType: "Superfast", origin: "HYB", destination: "NDLS" }),
+    train({ trainNumber: "12724", name: "Telangana Express", serviceType: "Superfast", origin: "NDLS", destination: "HYB" }),
+    train({ trainNumber: "12957", name: "Swarna Jayanti Rajdhani Express", serviceType: "Rajdhani", origin: "ADI", destination: "NDLS" }),
+    train({ trainNumber: "12958", name: "Swarna Jayanti Rajdhani Express", serviceType: "Rajdhani", origin: "NDLS", destination: "ADI" }),
+    train({ trainNumber: "12985", name: "Jaipur Double Decker Express", serviceType: "Double Decker", origin: "JP", destination: "DEE" }),
+    train({ trainNumber: "12986", name: "Jaipur Double Decker Express", serviceType: "Double Decker", origin: "DEE", destination: "JP" }),
+    train({ trainNumber: "12801", name: "Purushottam Express", serviceType: "Superfast", origin: "PURI", destination: "NDLS" }),
+    train({ trainNumber: "12802", name: "Purushottam Express", serviceType: "Superfast", origin: "NDLS", destination: "PURI" }),
+    train({ trainNumber: "12431", name: "Thiruvananthapuram Rajdhani Express", serviceType: "Rajdhani", origin: "TVC", destination: "NZM" }),
+    train({ trainNumber: "12432", name: "Thiruvananthapuram Rajdhani Express", serviceType: "Rajdhani", origin: "NZM", destination: "TVC" }),
+    train({ trainNumber: "12295", name: "Sanghamitra Express", serviceType: "Superfast", origin: "SMVB", destination: "DNR" }),
+    train({ trainNumber: "12296", name: "Sanghamitra Express", serviceType: "Superfast", origin: "DNR", destination: "SMVB" }),
+    train({ trainNumber: "12123", name: "Deccan Queen Express", serviceType: "Intercity", origin: "CSMT", destination: "PUNE" }),
+    train({ trainNumber: "12124", name: "Deccan Queen Express", serviceType: "Intercity", origin: "PUNE", destination: "CSMT" })
   ];
 
   const trainRuns = [
-    {
-      id: "run-12952-today",
-      trainId: "train-12952",
-      trainNumber: "12952",
-      serviceDate: isoDate(now),
-      status: "boarding",
-      currentDelaySeconds: 180
-    },
-    {
-      id: "run-12002-today",
-      trainId: "train-12002",
-      trainNumber: "12002",
-      serviceDate: isoDate(now),
-      status: "scheduled",
-      currentDelaySeconds: 0
-    },
-    {
-      id: "run-12301-today",
-      trainId: "train-12301",
-      trainNumber: "12301",
-      serviceDate: isoDate(now),
-      status: "scheduled",
-      currentDelaySeconds: 600
-    }
+    run({ trainNumber: "12952", serviceDate, status: "boarding", delaySeconds: 180 }),
+    run({ trainNumber: "12951", serviceDate, status: "scheduled", delaySeconds: 0 }),
+    run({ trainNumber: "12002", serviceDate }),
+    run({ trainNumber: "12001", serviceDate, delaySeconds: 120 }),
+    run({ trainNumber: "12301", serviceDate, delaySeconds: 600 }),
+    run({ trainNumber: "12302", serviceDate }),
+    run({ trainNumber: "12615", serviceDate, delaySeconds: 300 }),
+    run({ trainNumber: "12616", serviceDate }),
+    run({ trainNumber: "12627", serviceDate }),
+    run({ trainNumber: "12628", serviceDate, delaySeconds: 240 }),
+    run({ trainNumber: "12723", serviceDate }),
+    run({ trainNumber: "12724", serviceDate, delaySeconds: 180 }),
+    run({ trainNumber: "12957", serviceDate }),
+    run({ trainNumber: "12958", serviceDate }),
+    run({ trainNumber: "12985", serviceDate }),
+    run({ trainNumber: "12986", serviceDate }),
+    run({ trainNumber: "12801", serviceDate, delaySeconds: 420 }),
+    run({ trainNumber: "12802", serviceDate }),
+    run({ trainNumber: "12431", serviceDate, delaySeconds: 240 }),
+    run({ trainNumber: "12432", serviceDate }),
+    run({ trainNumber: "12295", serviceDate }),
+    run({ trainNumber: "12296", serviceDate, delaySeconds: 300 }),
+    run({ trainNumber: "12123", serviceDate }),
+    run({ trainNumber: "12124", serviceDate })
   ];
 
   const trainRunStops = [
-    {
-      id: "stop-12952-ndls",
-      trainRunId: "run-12952-today",
-      stationCode: "NDLS",
-      stopSequence: 1,
-      scheduledDeparture: minutesFrom(now, 25),
-      predictedDeparture: minutesFrom(now, 28),
-      plannedPlatform: "5",
-      currentPlatform: "8",
-      previousPlatform: "5",
-      platformStateVersion: 2,
-      confidence: 0.93,
-      confidenceLevel: "critical",
-      stateKind: "official_changed",
-      newestObservedAt: minutesFrom(now, -2),
-      events: [
-        {
-          id: "evt-planned-12952",
-          sourceKind: "official_ntes",
-          sourceName: "NTES planned board",
-          platformNumber: "5",
-          assignmentKind: "planned",
-          sourceConfidence: 0.82,
-          observedAt: minutesFrom(now, -38),
-          createdAt: minutesFrom(now, -38),
-          summary: "Initial planned platform published."
-        },
-        {
-          id: "evt-station-12952",
-          sourceKind: "official_station",
-          sourceName: "NDLS station display",
-          platformNumber: "8",
-          assignmentKind: "changed",
-          sourceConfidence: 0.97,
-          observedAt: minutesFrom(now, -2),
-          createdAt: minutesFrom(now, -2),
-          summary: "Station display changed the train to Platform 8."
-        },
-        {
-          id: "evt-crowd-12952",
-          sourceKind: "crowd",
-          sourceName: "Trusted passengers near footbridge",
-          platformNumber: "8",
-          assignmentKind: "confirmed",
-          sourceConfidence: 0.69,
-          observedAt: minutesFrom(now, -1),
-          createdAt: minutesFrom(now, -1),
-          summary: "Two accepted crowd reports confirm Platform 8."
-        }
-      ]
-    },
-    {
-      id: "stop-12002-ndls",
-      trainRunId: "run-12002-today",
-      stationCode: "NDLS",
-      stopSequence: 1,
-      scheduledDeparture: minutesFrom(now, 58),
-      predictedDeparture: minutesFrom(now, 58),
-      plannedPlatform: "4",
-      currentPlatform: "4",
-      previousPlatform: null,
-      platformStateVersion: 1,
-      confidence: 0.81,
-      confidenceLevel: "high",
-      stateKind: "official_confirmed",
-      newestObservedAt: minutesFrom(now, -5),
-      events: [
-        {
-          id: "evt-station-12002",
-          sourceKind: "official_station",
-          sourceName: "NDLS station display",
-          platformNumber: "4",
-          assignmentKind: "confirmed",
-          sourceConfidence: 0.94,
-          observedAt: minutesFrom(now, -5),
-          createdAt: minutesFrom(now, -5),
-          summary: "Station display confirms Platform 4."
-        }
-      ]
-    },
-    {
-      id: "stop-12301-hwh",
-      trainRunId: "run-12301-today",
-      stationCode: "HWH",
-      stopSequence: 1,
-      scheduledDeparture: minutesFrom(now, 92),
-      predictedDeparture: minutesFrom(now, 102),
-      plannedPlatform: "9",
-      currentPlatform: "9",
-      previousPlatform: null,
-      platformStateVersion: 1,
-      confidence: 0.78,
-      confidenceLevel: "high",
-      stateKind: "official_confirmed",
-      newestObservedAt: minutesFrom(now, -8),
-      events: [
-        {
-          id: "evt-station-12301",
-          sourceKind: "official_station",
-          sourceName: "HWH station display",
-          platformNumber: "9",
-          assignmentKind: "confirmed",
-          sourceConfidence: 0.91,
-          observedAt: minutesFrom(now, -8),
-          createdAt: minutesFrom(now, -8),
-          summary: "Station display confirms Platform 9."
-        }
-      ]
-    }
+    platformStop(now, { trainNumber: "12952", stationCode: "NDLS", departInMinutes: 25, delayMinutes: 3, plannedPlatform: "5", currentPlatform: "8", previousPlatform: "5", confidence: 0.93, sourceName: "NDLS station display", observedAgoMinutes: 2 }),
+    platformStop(now, { trainNumber: "12951", stationCode: "MMCT", departInMinutes: 86, plannedPlatform: "4", currentPlatform: "4", confidence: 0.82, sourceName: "MMCT station display" }),
+    platformStop(now, { trainNumber: "12002", stationCode: "NDLS", departInMinutes: 58, plannedPlatform: "4", currentPlatform: "4", confidence: 0.81, sourceName: "NDLS station display" }),
+    platformStop(now, { trainNumber: "12001", stationCode: "RKMP", departInMinutes: 72, delayMinutes: 2, plannedPlatform: "1", currentPlatform: "1", confidence: 0.8, sourceName: "RKMP station display" }),
+    platformStop(now, { trainNumber: "12301", stationCode: "HWH", departInMinutes: 92, delayMinutes: 10, plannedPlatform: "9", currentPlatform: "9", confidence: 0.78, sourceName: "HWH station display", observedAgoMinutes: 8 }),
+    platformStop(now, { trainNumber: "12302", stationCode: "NDLS", departInMinutes: 132, plannedPlatform: "12", currentPlatform: "12", confidence: 0.84, sourceName: "NDLS station display" }),
+    platformStop(now, { trainNumber: "12615", stationCode: "MAS", departInMinutes: 146, delayMinutes: 5, plannedPlatform: "6", currentPlatform: "8", previousPlatform: "6", confidence: 0.91, sourceName: "MAS station display", observedAgoMinutes: 3 }),
+    platformStop(now, { trainNumber: "12616", stationCode: "NDLS", departInMinutes: 176, plannedPlatform: "16", currentPlatform: "16", confidence: 0.79, sourceName: "NDLS station display" }),
+    platformStop(now, { trainNumber: "12627", stationCode: "SBC", departInMinutes: 204, plannedPlatform: "7", currentPlatform: "7", confidence: 0.86, sourceName: "SBC station display" }),
+    platformStop(now, { trainNumber: "12628", stationCode: "NDLS", departInMinutes: 224, delayMinutes: 4, plannedPlatform: "5", currentPlatform: "5", confidence: 0.77, sourceName: "NDLS station display" }),
+    platformStop(now, { trainNumber: "12723", stationCode: "HYB", departInMinutes: 252, plannedPlatform: "2", currentPlatform: "2", confidence: 0.83, sourceName: "HYB station display" }),
+    platformStop(now, { trainNumber: "12724", stationCode: "NDLS", departInMinutes: 274, delayMinutes: 3, plannedPlatform: "8", currentPlatform: "12", previousPlatform: "8", confidence: 0.9, sourceName: "NDLS station display", observedAgoMinutes: 4 }),
+    platformStop(now, { trainNumber: "12957", stationCode: "ADI", departInMinutes: 318, plannedPlatform: "3", currentPlatform: "3", confidence: 0.87, sourceName: "ADI station display" }),
+    platformStop(now, { trainNumber: "12958", stationCode: "NDLS", departInMinutes: 344, plannedPlatform: "4", currentPlatform: "4", confidence: 0.82, sourceName: "NDLS station display" }),
+    platformStop(now, { trainNumber: "12985", stationCode: "JP", departInMinutes: 124, plannedPlatform: "2", currentPlatform: "2", confidence: 0.85, sourceName: "JP station display" }),
+    platformStop(now, { trainNumber: "12986", stationCode: "DEE", departInMinutes: 164, plannedPlatform: "3", currentPlatform: "3", confidence: 0.82, sourceName: "DEE station display" }),
+    platformStop(now, { trainNumber: "12801", stationCode: "BBS", stopSequence: 2, departInMinutes: 198, delayMinutes: 7, plannedPlatform: "2", currentPlatform: "3", previousPlatform: "2", confidence: 0.89, sourceName: "BBS station display", observedAgoMinutes: 6 }),
+    platformStop(now, { trainNumber: "12802", stationCode: "NDLS", departInMinutes: 390, plannedPlatform: "12", currentPlatform: "12", confidence: 0.8, sourceName: "NDLS station display" }),
+    platformStop(now, { trainNumber: "12431", stationCode: "ERS", stopSequence: 3, departInMinutes: 232, delayMinutes: 4, plannedPlatform: "1", currentPlatform: "1", confidence: 0.79, sourceName: "ERS station display" }),
+    platformStop(now, { trainNumber: "12432", stationCode: "NZM", departInMinutes: 412, plannedPlatform: "5", currentPlatform: "5", confidence: 0.83, sourceName: "NZM station display" }),
+    platformStop(now, { trainNumber: "12295", stationCode: "SMVB", departInMinutes: 288, plannedPlatform: "4", currentPlatform: "4", confidence: 0.81, sourceName: "SMVB station display" }),
+    platformStop(now, { trainNumber: "12296", stationCode: "DNR", departInMinutes: 364, delayMinutes: 5, plannedPlatform: "2", currentPlatform: "2", confidence: 0.78, sourceName: "DNR station display" }),
+    platformStop(now, { trainNumber: "12123", stationCode: "CSMT", departInMinutes: 66, plannedPlatform: "8", currentPlatform: "8", confidence: 0.88, sourceName: "CSMT station display" }),
+    platformStop(now, { trainNumber: "12124", stationCode: "PUNE", departInMinutes: 96, plannedPlatform: "5", currentPlatform: "5", confidence: 0.84, sourceName: "PUNE station display" })
   ];
 
   const users = [];
@@ -248,82 +329,35 @@ export function createSeedData(now = new Date()) {
   const alerts = [];
   const bookings = [];
   const bookingInventory = [
-    {
-      id: "offer-12952-ndls-csmt-3a",
-      trainNumber: "12952",
-      serviceDate: isoDate(now),
-      fromStationCode: "NDLS",
-      toStationCode: "CSMT",
-      classCode: "3A",
-      quota: "GN",
-      capacity: 48,
-      availableSeats: 18,
-      waitlist: 0,
-      fare: 2310,
-      currency: "INR",
-      coachPrefix: "B",
-      seatsPerCoach: 8,
-      departureAt: minutesFrom(now, 28),
-      arrivalAt: minutesFrom(now, 1030),
-      journeyHours: 16.7
-    },
-    {
-      id: "offer-12952-ndls-csmt-2a",
-      trainNumber: "12952",
-      serviceDate: isoDate(now),
-      fromStationCode: "NDLS",
-      toStationCode: "CSMT",
-      classCode: "2A",
-      quota: "GN",
-      capacity: 32,
-      availableSeats: 7,
-      waitlist: 0,
-      fare: 3425,
-      currency: "INR",
-      coachPrefix: "A",
-      seatsPerCoach: 6,
-      departureAt: minutesFrom(now, 28),
-      arrivalAt: minutesFrom(now, 1030),
-      journeyHours: 16.7
-    },
-    {
-      id: "offer-12002-ndls-rkmp-cc",
-      trainNumber: "12002",
-      serviceDate: isoDate(now),
-      fromStationCode: "NDLS",
-      toStationCode: "RKMP",
-      classCode: "CC",
-      quota: "GN",
-      capacity: 72,
-      availableSeats: 24,
-      waitlist: 0,
-      fare: 1395,
-      currency: "INR",
-      coachPrefix: "C",
-      seatsPerCoach: 12,
-      departureAt: minutesFrom(now, 58),
-      arrivalAt: minutesFrom(now, 545),
-      journeyHours: 8.1
-    },
-    {
-      id: "offer-12301-hwh-ndls-3a",
-      trainNumber: "12301",
-      serviceDate: isoDate(now),
-      fromStationCode: "HWH",
-      toStationCode: "NDLS",
-      classCode: "3A",
-      quota: "GN",
-      capacity: 48,
-      availableSeats: 5,
-      waitlist: 0,
-      fare: 2590,
-      currency: "INR",
-      coachPrefix: "B",
-      seatsPerCoach: 8,
-      departureAt: minutesFrom(now, 102),
-      arrivalAt: minutesFrom(now, 1160),
-      journeyHours: 17.6
-    }
+    offer(now, serviceDate, { id: "offer-12952-ndls-mmct-3a", trainNumber: "12952", fromStationCode: "NDLS", toStationCode: "MMCT", classCode: "3A", capacity: 48, availableSeats: 18, fare: 2310, coachPrefix: "B", seatsPerCoach: 8, departInMinutes: 28, journeyHours: 16.7 }),
+    offer(now, serviceDate, { id: "offer-12952-ndls-mmct-2a", trainNumber: "12952", fromStationCode: "NDLS", toStationCode: "MMCT", classCode: "2A", capacity: 32, availableSeats: 7, fare: 3425, coachPrefix: "A", seatsPerCoach: 6, departInMinutes: 28, journeyHours: 16.7 }),
+    offer(now, serviceDate, { id: "offer-12952-ndls-mmct-1a", trainNumber: "12952", fromStationCode: "NDLS", toStationCode: "MMCT", classCode: "1A", capacity: 18, availableSeats: 3, fare: 5480, coachPrefix: "H", seatsPerCoach: 4, departInMinutes: 28, journeyHours: 16.7 }),
+    offer(now, serviceDate, { id: "offer-12951-mmct-ndls-3a", trainNumber: "12951", fromStationCode: "MMCT", toStationCode: "NDLS", classCode: "3A", capacity: 48, availableSeats: 16, fare: 2310, coachPrefix: "B", seatsPerCoach: 8, departInMinutes: 86, journeyHours: 16.7 }),
+    offer(now, serviceDate, { id: "offer-12002-ndls-rkmp-cc", trainNumber: "12002", fromStationCode: "NDLS", toStationCode: "RKMP", classCode: "CC", capacity: 72, availableSeats: 24, fare: 1395, coachPrefix: "C", seatsPerCoach: 12, departInMinutes: 58, journeyHours: 8.1 }),
+    offer(now, serviceDate, { id: "offer-12001-rkmp-ndls-cc", trainNumber: "12001", fromStationCode: "RKMP", toStationCode: "NDLS", classCode: "CC", capacity: 72, availableSeats: 31, fare: 1395, coachPrefix: "C", seatsPerCoach: 12, departInMinutes: 74, journeyHours: 8.1 }),
+    offer(now, serviceDate, { id: "offer-12301-hwh-ndls-3a", trainNumber: "12301", fromStationCode: "HWH", toStationCode: "NDLS", classCode: "3A", capacity: 48, availableSeats: 5, fare: 2590, coachPrefix: "B", seatsPerCoach: 8, departInMinutes: 102, journeyHours: 17.6 }),
+    offer(now, serviceDate, { id: "offer-12301-hwh-ndls-2a", trainNumber: "12301", fromStationCode: "HWH", toStationCode: "NDLS", classCode: "2A", capacity: 32, availableSeats: 2, fare: 3820, coachPrefix: "A", seatsPerCoach: 6, departInMinutes: 102, journeyHours: 17.6 }),
+    offer(now, serviceDate, { id: "offer-12302-ndls-hwh-3a", trainNumber: "12302", fromStationCode: "NDLS", toStationCode: "HWH", classCode: "3A", capacity: 48, availableSeats: 14, fare: 2590, coachPrefix: "B", seatsPerCoach: 8, departInMinutes: 132, journeyHours: 17.6 }),
+    offer(now, serviceDate, { id: "offer-12615-mas-ndls-3a", trainNumber: "12615", fromStationCode: "MAS", toStationCode: "NDLS", classCode: "3A", capacity: 64, availableSeats: 22, fare: 2495, coachPrefix: "B", seatsPerCoach: 8, departInMinutes: 151, journeyHours: 33.1 }),
+    offer(now, serviceDate, { id: "offer-12615-mas-ndls-sl", trainNumber: "12615", fromStationCode: "MAS", toStationCode: "NDLS", classCode: "SL", capacity: 72, availableSeats: 39, fare: 880, coachPrefix: "S", seatsPerCoach: 8, departInMinutes: 151, journeyHours: 33.1 }),
+    offer(now, serviceDate, { id: "offer-12616-ndls-mas-3a", trainNumber: "12616", fromStationCode: "NDLS", toStationCode: "MAS", classCode: "3A", capacity: 64, availableSeats: 26, fare: 2495, coachPrefix: "B", seatsPerCoach: 8, departInMinutes: 176, journeyHours: 33.1 }),
+    offer(now, serviceDate, { id: "offer-12616-ndls-mas-sl", trainNumber: "12616", fromStationCode: "NDLS", toStationCode: "MAS", classCode: "SL", capacity: 72, availableSeats: 41, fare: 880, coachPrefix: "S", seatsPerCoach: 8, departInMinutes: 176, journeyHours: 33.1 }),
+    offer(now, serviceDate, { id: "offer-12627-sbc-ndls-3a", trainNumber: "12627", fromStationCode: "SBC", toStationCode: "NDLS", classCode: "3A", capacity: 64, availableSeats: 19, fare: 2545, coachPrefix: "B", seatsPerCoach: 8, departInMinutes: 204, journeyHours: 39.2 }),
+    offer(now, serviceDate, { id: "offer-12628-ndls-sbc-3a", trainNumber: "12628", fromStationCode: "NDLS", toStationCode: "SBC", classCode: "3A", capacity: 64, availableSeats: 21, fare: 2545, coachPrefix: "B", seatsPerCoach: 8, departInMinutes: 228, journeyHours: 39.2 }),
+    offer(now, serviceDate, { id: "offer-12723-hyb-ndls-3a", trainNumber: "12723", fromStationCode: "HYB", toStationCode: "NDLS", classCode: "3A", capacity: 56, availableSeats: 17, fare: 2380, coachPrefix: "B", seatsPerCoach: 8, departInMinutes: 252, journeyHours: 26.8 }),
+    offer(now, serviceDate, { id: "offer-12724-ndls-hyb-3a", trainNumber: "12724", fromStationCode: "NDLS", toStationCode: "HYB", classCode: "3A", capacity: 56, availableSeats: 12, fare: 2380, coachPrefix: "B", seatsPerCoach: 8, departInMinutes: 277, journeyHours: 26.8 }),
+    offer(now, serviceDate, { id: "offer-12957-adi-ndls-3a", trainNumber: "12957", fromStationCode: "ADI", toStationCode: "NDLS", classCode: "3A", capacity: 48, availableSeats: 11, fare: 1975, coachPrefix: "B", seatsPerCoach: 8, departInMinutes: 318, journeyHours: 13.2 }),
+    offer(now, serviceDate, { id: "offer-12958-ndls-adi-3a", trainNumber: "12958", fromStationCode: "NDLS", toStationCode: "ADI", classCode: "3A", capacity: 48, availableSeats: 15, fare: 1975, coachPrefix: "B", seatsPerCoach: 8, departInMinutes: 344, journeyHours: 13.2 }),
+    offer(now, serviceDate, { id: "offer-12985-jp-dee-cc", trainNumber: "12985", fromStationCode: "JP", toStationCode: "DEE", classCode: "CC", capacity: 78, availableSeats: 34, fare: 760, coachPrefix: "C", seatsPerCoach: 13, departInMinutes: 124, journeyHours: 4.6 }),
+    offer(now, serviceDate, { id: "offer-12986-dee-jp-cc", trainNumber: "12986", fromStationCode: "DEE", toStationCode: "JP", classCode: "CC", capacity: 78, availableSeats: 29, fare: 760, coachPrefix: "C", seatsPerCoach: 13, departInMinutes: 164, journeyHours: 4.6 }),
+    offer(now, serviceDate, { id: "offer-12801-bbs-ndls-3a", trainNumber: "12801", fromStationCode: "BBS", toStationCode: "NDLS", classCode: "3A", capacity: 64, availableSeats: 9, fare: 2290, coachPrefix: "B", seatsPerCoach: 8, departInMinutes: 205, journeyHours: 27.5 }),
+    offer(now, serviceDate, { id: "offer-12802-ndls-puri-3a", trainNumber: "12802", fromStationCode: "NDLS", toStationCode: "PURI", classCode: "3A", capacity: 64, availableSeats: 18, fare: 2440, coachPrefix: "B", seatsPerCoach: 8, departInMinutes: 390, journeyHours: 31.4 }),
+    offer(now, serviceDate, { id: "offer-12431-ers-nzm-3a", trainNumber: "12431", fromStationCode: "ERS", toStationCode: "NZM", classCode: "3A", capacity: 48, availableSeats: 8, fare: 3185, coachPrefix: "B", seatsPerCoach: 8, departInMinutes: 236, journeyHours: 42.3 }),
+    offer(now, serviceDate, { id: "offer-12432-nzm-tvc-3a", trainNumber: "12432", fromStationCode: "NZM", toStationCode: "TVC", classCode: "3A", capacity: 48, availableSeats: 13, fare: 3250, coachPrefix: "B", seatsPerCoach: 8, departInMinutes: 412, journeyHours: 42.8 }),
+    offer(now, serviceDate, { id: "offer-12295-smvb-dnr-3a", trainNumber: "12295", fromStationCode: "SMVB", toStationCode: "DNR", classCode: "3A", capacity: 64, availableSeats: 20, fare: 2675, coachPrefix: "B", seatsPerCoach: 8, departInMinutes: 288, journeyHours: 45.2 }),
+    offer(now, serviceDate, { id: "offer-12296-dnr-smvb-3a", trainNumber: "12296", fromStationCode: "DNR", toStationCode: "SMVB", classCode: "3A", capacity: 64, availableSeats: 16, fare: 2675, coachPrefix: "B", seatsPerCoach: 8, departInMinutes: 369, journeyHours: 45.2 }),
+    offer(now, serviceDate, { id: "offer-12123-csmt-pune-cc", trainNumber: "12123", fromStationCode: "CSMT", toStationCode: "PUNE", classCode: "CC", capacity: 78, availableSeats: 25, fare: 520, coachPrefix: "C", seatsPerCoach: 13, departInMinutes: 66, journeyHours: 3.2 }),
+    offer(now, serviceDate, { id: "offer-12124-pune-csmt-cc", trainNumber: "12124", fromStationCode: "PUNE", toStationCode: "CSMT", classCode: "CC", capacity: 78, availableSeats: 27, fare: 520, coachPrefix: "C", seatsPerCoach: 13, departInMinutes: 96, journeyHours: 3.2 })
   ];
 
   return {

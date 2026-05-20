@@ -110,8 +110,8 @@
           <section class="hero-status" id="heroStatus">
             <div>
               <p class="eyebrow" id="heroTrain">No active journey</p>
-              <h2 id="heroTitle">Add a journey to monitor platform changes</h2>
-              <p id="heroAction" class="next-action">Enter the passenger train details to receive platform-change alerts with train number, station, confidence, and next action.</p>
+              <h2 id="heroTitle">Book a ticket to monitor platform changes</h2>
+              <p id="heroAction" class="next-action">Search an India route, choose an available train, and confirm the booking to start platform-change tracking.</p>
             </div>
             <div class="platform-tile" aria-label="Current platform">
               <span>Platform</span>
@@ -177,6 +177,15 @@
             <h2>Live Inputs</h2>
             <span id="opsHealth">Healthy</span>
           </div>
+
+          <form id="pnrForm" class="compact-form">
+            <h3>PNR Tracking</h3>
+            <label>
+              PNR
+              <input name="pnr" id="pnrInput" inputmode="numeric" maxlength="10" autocomplete="off">
+            </label>
+            <button class="primary-button" type="submit">Track Booking</button>
+          </form>
 
           <form id="crowdForm" class="compact-form">
             <h3>Crowd Report</h3>

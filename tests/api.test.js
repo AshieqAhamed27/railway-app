@@ -38,12 +38,22 @@ test("bootstrap starts without passenger demo values", async () => {
 
 test("search returns bookable train offers", async () => {
   await callApi("/api/reset-data", { method: "POST" });
-  const result = await callApi("/api/booking/search?from=NDLS&to=CSMT&classCode=3A");
+  const result = await callApi("/api/booking/search?from=NDLS&to=MMCT&classCode=3A");
 
   assert.equal(result.statusCode, 200);
   assert.equal(result.payload.offers.length, 1);
   assert.equal(result.payload.offers[0].trainNumber, "12952");
   assert.equal(result.payload.offers[0].status, "AVAILABLE");
+});
+
+test("search covers long-distance India corridors", async () => {
+  await callApi("/api/reset-data", { method: "POST" });
+  const result = await callApi("/api/booking/search?from=NDLS&to=MAS&classCode=3A");
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.payload.offers.length, 1);
+  assert.equal(result.payload.offers[0].trainNumber, "12616");
+  assert.equal(result.payload.offers[0].toStationCode, "MAS");
 });
 
 test("booking creates pnr, ticket, active trip, and platform-change alert", async () => {
@@ -54,8 +64,8 @@ test("booking creates pnr, ticket, active trip, and platform-change alert", asyn
       passengerName: "Passenger",
       age: 30,
       gender: "not_specified",
-      fromStationCode: "NDLS",
-      toStationCode: "CSMT",
+      boardingStationCode: "NDLS",
+      destinationStationCode: "MMCT",
       classCode: "3A",
       mobilityProfile: "luggage"
     }
@@ -66,10 +76,33 @@ test("booking creates pnr, ticket, active trip, and platform-change alert", asyn
   assert.equal(result.payload.booking.status, "CONFIRMED");
   assert.equal(result.payload.tripCard.alerts.length, 1);
   assert.equal(result.payload.tripCard.alerts[0].title, "12952: Platform 5 -> 8 at NDLS");
-  assert.match(result.payload.tripCard.alerts[0].body, /train 12952 Mumbai Rajdhani Express/);
+  assert.match(result.payload.tripCard.alerts[0].body, /train 12952 Mumbai Central Tejas Rajdhani Express/);
   assert.match(result.payload.tripCard.alerts[0].body, /Previous platform was 5/);
 
   const lookup = await callApi(`/api/bookings/${result.payload.booking.pnr}`);
   assert.equal(lookup.statusCode, 200);
   assert.equal(lookup.payload.booking.pnr, result.payload.booking.pnr);
+});
+
+test("booking selected offer creates the requested train ticket", async () => {
+  await callApi("/api/reset-data", { method: "POST" });
+  const result = await callApi("/api/bookings", {
+    method: "POST",
+    body: {
+      offerId: "offer-12616-ndls-mas-sl",
+      passengerName: "Passenger",
+      age: 30,
+      gender: "not_specified",
+      boardingStationCode: "NDLS",
+      destinationStationCode: "MAS",
+      classCode: "SL",
+      mobilityProfile: "standard"
+    }
+  });
+
+  assert.equal(result.statusCode, 201);
+  assert.equal(result.payload.booking.trainNumber, "12616");
+  assert.equal(result.payload.booking.classCode, "SL");
+  assert.equal(result.payload.booking.toStationCode, "MAS");
+  assert.equal(result.payload.tripCard.platformState.currentPlatform, "16");
 });

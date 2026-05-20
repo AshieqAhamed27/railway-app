@@ -1,6 +1,8 @@
 const state = {
   bootstrap: null,
   selectedTripId: null,
+  currentOffers: [],
+  selectedOfferId: null,
   refreshTimer: null
 };
 
@@ -32,6 +34,8 @@ const els = {
   stateVersion: document.querySelector("#stateVersion"),
   alerts: document.querySelector("#alerts"),
   alertCount: document.querySelector("#alertCount"),
+  pnrForm: document.querySelector("#pnrForm"),
+  pnrInput: document.querySelector("#pnrInput"),
   crowdForm: document.querySelector("#crowdForm"),
   crowdPlatform: document.querySelector("#crowdPlatform"),
   opsForm: document.querySelector("#opsForm"),
@@ -60,6 +64,17 @@ function pct(value) {
   return `${Math.round(Number(value || 0) * 100)}%`;
 }
 
+function todayInIndia() {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
 function showToast(message) {
   els.toast.textContent = message;
   els.toast.classList.add("show");
@@ -84,6 +99,9 @@ async function api(path, options = {}) {
 
 async function refresh() {
   state.bootstrap = await api("/api/bootstrap");
+  if (!state.currentOffers.length) {
+    state.currentOffers = state.bootstrap.bookingOffers ?? [];
+  }
   if (!state.selectedTripId || !state.bootstrap.tripCards.some((card) => card.trip.id === state.selectedTripId)) {
     state.selectedTripId = state.bootstrap.tripCards[0]?.trip.id ?? null;
   }
@@ -97,28 +115,40 @@ function selectedCard() {
 function renderSelects() {
   if (!state.bootstrap) return;
   const previousFrom = els.boardingStationSelect.value || "NDLS";
-  const previousTo = els.destinationStationSelect.value || "CSMT";
+  const previousTo = els.destinationStationSelect.value || "MMCT";
+  const stationCodes = new Set(state.bootstrap.stations.map((station) => station.code));
   const stationOptions = state.bootstrap.stations.map((station) => (
     `<option value="${station.code}">${station.code} ${station.name}</option>`
   )).join("");
   els.boardingStationSelect.innerHTML = stationOptions;
   els.destinationStationSelect.innerHTML = stationOptions;
-  els.boardingStationSelect.value = previousFrom;
-  els.destinationStationSelect.value = previousTo === previousFrom ? "CSMT" : previousTo;
+  els.boardingStationSelect.value = stationCodes.has(previousFrom) ? previousFrom : "NDLS";
+  const safeTo = stationCodes.has(previousTo) ? previousTo : "MMCT";
+  els.destinationStationSelect.value = safeTo === els.boardingStationSelect.value ? "MMCT" : safeTo;
   if (!els.serviceDateInput.value) {
-    els.serviceDateInput.value = new Date().toISOString().slice(0, 10);
+    els.serviceDateInput.value = todayInIndia();
   }
-  renderBookingOffers(state.bootstrap.bookingOffers ?? []);
+  renderBookingOffers(state.currentOffers.length ? state.currentOffers : state.bootstrap.bookingOffers ?? []);
 }
 
 function renderBookingOffers(offers) {
-  els.bookingOffers.innerHTML = offers.length ? offers.slice(0, 3).map((offer) => `
-    <div class="offer-card" data-offer-id="${offer.id}">
-      <strong>${offer.trainNumber} ${offer.trainName}</strong>
-      <small>${offer.fromStationCode} to ${offer.toStationCode} - ${offer.classLabel} - ${offer.status}</small>
-      <small>Fare INR ${offer.fare} - Departs ${formatTime(offer.departureAt)}</small>
-    </div>
-  `).join("") : `<div class="offer-card"><strong>No seats found</strong><small>Change route, class, or date.</small></div>`;
+  state.currentOffers = offers;
+  if (!offers.some((offer) => offer.id === state.selectedOfferId)) {
+    state.selectedOfferId = offers[0]?.id ?? null;
+  }
+  els.bookingOffers.innerHTML = offers.length ? offers.slice(0, 4).map((offer) => {
+    const selected = offer.id === state.selectedOfferId;
+    return `
+      <label class="offer-card ${selected ? "selected" : ""}" data-offer-id="${offer.id}">
+        <input type="radio" name="offerId" value="${offer.id}" ${selected ? "checked" : ""}>
+        <span>
+          <strong>${offer.trainNumber} ${offer.trainName}</strong>
+          <small>${offer.fromStationCode} to ${offer.toStationCode} - ${offer.classLabel} - ${offer.status}</small>
+          <small>INR ${offer.fare} - ${offer.availableSeats} seats - Departs ${formatTime(offer.departureAt)}</small>
+        </span>
+      </label>
+    `;
+  }).join("") : `<div class="offer-card"><strong>No seats found</strong><small>Change route, class, or date.</small></div>`;
 }
 
 function renderTrips() {
@@ -131,16 +161,16 @@ function renderTrips() {
       <button class="trip-button" type="button" data-trip-id="${card.trip.id}" aria-selected="${selected}">
         <strong>${card.train.trainNumber} ${card.train.name}</strong>
         <small>${card.trip.passengerName} - ${card.booking ? `PNR ${card.booking.pnr}` : "Trip"} - ${card.boardingStation.code} to ${card.trip.destinationStationCode}</small>
-        <span class="badge ${severity}">${severity.toUpperCase()} · Platform ${card.platformState.currentPlatform}</span>
+        <span class="badge ${severity}">${severity.toUpperCase()} - Platform ${card.platformState.currentPlatform || "pending"}</span>
       </button>
     `;
-  }).join("") : `<div class="timeline-item"><strong>No active trips</strong><small>Add a journey to start platform monitoring.</small></div>`;
+  }).join("") : `<div class="timeline-item"><strong>No active trips</strong><small>Book a ticket to start platform monitoring.</small></div>`;
 }
 
 function renderEmptyState() {
   els.heroTrain.textContent = "No active journey";
-  els.heroTitle.textContent = "Add a journey to monitor platform changes";
-  els.heroAction.textContent = "Enter the passenger train details to receive platform-change alerts with train number, station, confidence, and next action.";
+  els.heroTitle.textContent = "Book a ticket to monitor platform changes";
+  els.heroAction.textContent = "Search an India route, choose an available train, and confirm the booking to start platform-change tracking.";
   els.currentPlatform.textContent = "--";
   els.platformConfidence.textContent = "Waiting for journey";
   els.riskBadge.textContent = "--";
@@ -167,14 +197,14 @@ function renderHero(card) {
   const changed = platform.previousPlatform && platform.previousPlatform !== platform.currentPlatform;
 
   els.heroTrain.textContent = card.booking?.pnr
-    ? `${card.train.trainNumber} ${card.train.name} · PNR ${card.booking.pnr}`
-    : `${card.train.trainNumber} ${card.train.name} · ${card.boardingStation.name}`;
+    ? `${card.train.trainNumber} ${card.train.name} - PNR ${card.booking.pnr}`
+    : `${card.train.trainNumber} ${card.train.name} - ${card.boardingStation.name}`;
   els.heroTitle.textContent = changed
     ? `Platform moved from ${platform.previousPlatform} to ${platform.currentPlatform}`
     : `${platform.currentPlatform ? `Platform ${platform.currentPlatform}` : "Platform pending"} for boarding`;
   els.heroAction.textContent = risk.nextAction;
   els.currentPlatform.textContent = platform.currentPlatform || "--";
-  els.platformConfidence.textContent = `${platform.stateKind.replaceAll("_", " ")} · ${pct(platform.confidence)}`;
+  els.platformConfidence.textContent = `${platform.stateKind.replaceAll("_", " ")} - ${pct(platform.confidence)}`;
   els.riskBadge.textContent = risk.severity.toUpperCase();
   els.riskBadge.className = `badge ${risk.severity}`;
   els.departureMetric.textContent = `${risk.minutesUntilDeparture} min`;
@@ -189,17 +219,18 @@ function renderHero(card) {
 
 function renderMap(card) {
   const station = card.boardingStation;
+  const currentPlatform = card.platformState.currentPlatform;
   const activeAreaIds = new Set([
     card.trip.currentAreaId,
     ...(card.route.steps || []).map((step) => {
       const area = station.areas?.find((item) => item.name === step.to);
       return area?.id;
     }).filter(Boolean),
-    `platform-${card.platformState.currentPlatform}`
+    currentPlatform ? `platform-${currentPlatform}` : null
   ]);
 
   if (!station.areas?.length) {
-    els.stationMap.innerHTML = `<div class="map-node active" style="left:50%;top:50%">Platform ${card.platformState.currentPlatform}</div>`;
+    els.stationMap.innerHTML = `<div class="map-node active" style="left:50%;top:50%">Platform ${currentPlatform || "pending"}</div>`;
     return;
   }
 
@@ -219,15 +250,15 @@ function renderMap(card) {
 
 function renderRoute(card) {
   els.routeSteps.innerHTML = card.route.steps.map((step) => (
-    `<li>${step.from} to ${step.to} · ${step.mode} · ${Math.ceil(step.expectedSeconds / 60)} min</li>`
+    `<li>${step.from} to ${step.to} - ${step.mode} - ${Math.ceil(step.expectedSeconds / 60)} min</li>`
   )).join("");
 }
 
 function renderTimeline(card) {
   els.timeline.innerHTML = card.timeline.map((event) => `
     <div class="timeline-item">
-      <strong>${event.sourceName} · Platform ${event.platformNumber}</strong>
-      <small>${event.assignmentKind} · ${event.sourceKind.replaceAll("_", " ")} · ${pct(event.sourceConfidence)} · ${formatAge(event.observedAt)}</small>
+      <strong>${event.sourceName} - Platform ${event.platformNumber}</strong>
+      <small>${event.assignmentKind} - ${event.sourceKind.replaceAll("_", " ")} - ${pct(event.sourceConfidence)} - ${formatAge(event.observedAt)}</small>
       <small>${event.summary || ""}</small>
     </div>
   `).join("");
@@ -240,7 +271,7 @@ function renderAlerts(card) {
       <strong>${alert.title}</strong>
       ${alert.trainNumber ? `<small>Train ${alert.trainNumber} - ${alert.stationCode || card.boardingStation.code} - Platform ${alert.previousPlatform || card.platformState.plannedPlatform || "--"} to ${alert.currentPlatform || card.platformState.currentPlatform}</small>` : ""}
       <small>${alert.body}</small>
-      <small>${formatAge(alert.createdAt)} · ${pct(alert.confidence)} confidence</small>
+      <small>${formatAge(alert.createdAt)} - ${pct(alert.confidence)} confidence</small>
       ${alert.acknowledged ? "<small>Acknowledged</small>" : `<button class="alert-action" type="button" data-alert-id="${alert.id}">Acknowledge</button>`}
     </div>
   `).join("") : `<div class="alert-item"><strong>No active alerts</strong><small>Realtime stream is connected.</small></div>`;
@@ -298,6 +329,9 @@ function setupEvents() {
   els.addTripForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const body = Object.fromEntries(new FormData(els.addTripForm));
+    if (!body.offerId && state.selectedOfferId) {
+      body.offerId = state.selectedOfferId;
+    }
     try {
       const result = await api("/api/bookings", {
         method: "POST",
@@ -311,6 +345,12 @@ function setupEvents() {
     }
   });
 
+  els.bookingOffers.addEventListener("change", (event) => {
+    if (event.target?.name !== "offerId") return;
+    state.selectedOfferId = event.target.value;
+    renderBookingOffers(state.currentOffers);
+  });
+
   async function refreshBookingOffers() {
     const params = new URLSearchParams({
       from: els.boardingStationSelect.value,
@@ -320,6 +360,7 @@ function setupEvents() {
     });
     try {
       const result = await api(`/api/booking/search?${params}`);
+      state.currentOffers = result.offers;
       renderBookingOffers(result.offers);
     } catch (error) {
       showToast(error.message);
@@ -335,11 +376,31 @@ function setupEvents() {
     control.addEventListener("change", refreshBookingOffers);
   }
 
+  els.pnrForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const pnr = String(new FormData(els.pnrForm).get("pnr") || "").trim();
+    if (!pnr) {
+      showToast("Enter a PNR to track");
+      return;
+    }
+    try {
+      const result = await api(`/api/bookings/${encodeURIComponent(pnr)}`);
+      await refresh();
+      if (result.booking.tripId) {
+        state.selectedTripId = result.booking.tripId;
+        render();
+      }
+      showToast(`Tracking PNR ${result.booking.pnr}`);
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+
   els.crowdForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     const card = selectedCard();
     if (!card) {
-      showToast("Add a journey before submitting a crowd report");
+      showToast("Book a ticket before submitting a crowd report");
       return;
     }
     const form = new FormData(els.crowdForm);
@@ -367,7 +428,7 @@ function setupEvents() {
     event.preventDefault();
     const card = selectedCard();
     if (!card) {
-      showToast("Add a journey before publishing a platform event");
+      showToast("Book a ticket before publishing a platform event");
       return;
     }
     const form = new FormData(els.opsForm);

@@ -6,10 +6,12 @@ This repository now includes a runnable full-stack pilot application plus the or
 
 ## Current Product Flow
 
-- Search bookable train inventory by route, date, and travel class.
-- Confirm a booking with passenger/contact details.
+- Search bookable train inventory by route, date, and travel class across major India corridors.
+- Compare available offers by train, class, seats, fare, and departure time.
+- Confirm the selected offer with passenger/contact details.
 - Receive a PNR-style booking reference, fare breakup, coach, seat, and berth assignment.
 - Automatically start live platform monitoring for the booked passenger.
+- Track an existing booking by PNR inside the app.
 - Show train-specific platform-change alerts such as `12952: Platform 5 -> 8 at NDLS`.
 
 This is a pilot booking engine with in-memory inventory. Real Indian Railways ticket issuance would require official railway/IRCTC integration, compliance review, and payment settlement.
@@ -57,7 +59,7 @@ In the Vercel dashboard, keep the default static/build settings and do not set t
 - `src/server.js` - full-stack Node server, REST API, realtime event stream, routing and alert orchestration.
 - `src/domain/booking.js` - booking search, fare breakup, seat reservation, and PNR-style reference helpers.
 - `src/domain/intelligence.js` - confidence scoring, crowd trust scoring, platform reconciliation, and trip-risk logic.
-- `src/data/seed.js` - realistic pilot data for NDLS and active train trips.
+- `src/data/seed.js` - national pilot station, train, platform, and booking inventory data.
 - `public/` - passenger operations frontend.
 - `tests/` - Node test coverage for the core intelligence rules.
 

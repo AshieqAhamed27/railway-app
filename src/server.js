@@ -113,20 +113,25 @@ function getAreaName(station, areaId) {
   return getArea(station, areaId)?.name ?? areaId;
 }
 
+function fallbackRoute(stationCode, fromAreaId, platformNumber) {
+  const platformLabel = platformNumber ? `Platform ${platformNumber}` : "platform pending";
+  return {
+    stationCode,
+    fromAreaId,
+    toAreaId: platformNumber ? `platform-${platformNumber}` : "platform-pending",
+    expectedSeconds: 420,
+    distanceMeters: 480,
+    accessible: true,
+    steps: [
+      { from: "station entrance", to: platformLabel, mode: "walk", expectedSeconds: 420 }
+    ]
+  };
+}
+
 function getRoute(stationCode, fromAreaId, platformNumber, mobilityProfile = "standard") {
   const station = findStation(stationCode);
   if (!station?.areas?.length) {
-    return {
-      stationCode,
-      fromAreaId,
-      toAreaId: `platform-${platformNumber}`,
-      expectedSeconds: 420,
-      distanceMeters: 480,
-      accessible: true,
-      steps: [
-        { from: "station entrance", to: `Platform ${platformNumber}`, mode: "walk", expectedSeconds: 420 }
-      ]
-    };
+    return fallbackRoute(stationCode, fromAreaId, platformNumber);
   }
 
   const toAreaId = `platform-${platformNumber}`;
@@ -176,7 +181,10 @@ function getRoute(stationCode, fromAreaId, platformNumber, mobilityProfile = "st
   }
 
   if (!steps.length) {
-    return getRoute(stationCode, fromAreaId, platformNumber, "standard");
+    if (accessibleOnly) {
+      return getRoute(stationCode, fromAreaId, platformNumber, "standard");
+    }
+    return fallbackRoute(stationCode, fromAreaId, platformNumber);
   }
 
   return {
@@ -399,6 +407,47 @@ function buildTripCard(trip) {
     item.stationCode === trip.boardingStationCode
   ));
   const station = findStation(trip.boardingStationCode);
+  if (!stop) {
+    const route = fallbackRoute(trip.boardingStationCode, trip.currentAreaId, null);
+    const walkingMinutes = computeWalkingMinutes(route, trip.mobilityProfile, station?.congestionScore ?? 0);
+    const risk = computeTripRisk({
+      departureAt: new Date(Date.now() + 60 * 60000).toISOString(),
+      walkingMinutes,
+      platformChanged: false,
+      confidence: 0.1,
+      platformNumber: "pending",
+      mobilityProfile: trip.mobilityProfile,
+      emergencyMode: trip.trackingMode === "emergency",
+      now: new Date()
+    });
+
+    return {
+      trip,
+      booking: state.bookings.find((booking) => booking.id === trip.bookingId) ?? null,
+      train,
+      trainRun,
+      boardingStation: station,
+      destinationStation: findStation(trip.destinationStationCode),
+      platformState: {
+        trainRunStopId: null,
+        plannedPlatform: null,
+        currentPlatform: null,
+        previousPlatform: null,
+        confidence: 0.1,
+        confidenceLevel: "very_low",
+        stateKind: "pending",
+        newestObservedAt: null,
+        platformStateVersion: 0,
+        alternatives: [],
+        conflict: false
+      },
+      route,
+      risk,
+      alerts: state.alerts.filter((alert) => alert.tripId === trip.id).slice(0, 6),
+      timeline: [],
+      incidents: []
+    };
+  }
   const route = getRoute(trip.boardingStationCode, trip.currentAreaId, stop.currentPlatform, trip.mobilityProfile);
   const walkingMinutes = computeWalkingMinutes(route, trip.mobilityProfile, station?.congestionScore ?? 0);
   const risk = computeTripRisk({
@@ -452,7 +501,7 @@ function buildBootstrap() {
     bookingOffers: searchBookingOffers({
       state,
       from: "NDLS",
-      to: "CSMT",
+      to: "MMCT",
       serviceDate: state.trainRuns[0]?.serviceDate
     }),
     bookings: state.bookings.map(buildBookingTicket).slice(0, 10),
@@ -533,11 +582,14 @@ export async function handleApi(request, response) {
   if (method === "POST" && requestUrl.pathname === "/api/bookings") {
     const body = await readJson(request);
     const passenger = normalizePassenger(body);
+    const fromStationCode = body.fromStationCode || body.boardingStationCode;
+    const toStationCode = body.toStationCode || body.destinationStationCode;
+    const serviceDate = body.serviceDate || body.date;
     const offerId = body.offerId || searchBookingOffers({
       state,
-      from: body.fromStationCode,
-      to: body.toStationCode,
-      serviceDate: body.serviceDate,
+      from: fromStationCode,
+      to: toStationCode,
+      serviceDate,
       classCode: body.classCode
     })[0]?.id;
 
