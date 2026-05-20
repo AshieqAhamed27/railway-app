@@ -29,7 +29,7 @@ This app is configured for Vercel with:
 - `public/` served as static frontend files.
 - `api/index.js` as the Vercel Function adapter for `/api/*`.
 - `api/events.js` as a lightweight Server-Sent Events compatibility endpoint.
-- `vercel.json` rewrites for `/api/:path*` and `/events`.
+- `vercel.json` explicit builds/routes so Vercel does not treat `src/server.js` as the root server entrypoint.
 
 Deploy from the project root:
 
