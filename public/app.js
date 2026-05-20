@@ -10,9 +10,11 @@ const els = {
   activeTripCount: document.querySelector("#activeTripCount"),
   tripList: document.querySelector("#tripList"),
   addTripForm: document.querySelector("#addTripForm"),
-  trainSelect: document.querySelector("#trainSelect"),
   boardingStationSelect: document.querySelector("#boardingStationSelect"),
   destinationStationSelect: document.querySelector("#destinationStationSelect"),
+  bookingClassSelect: document.querySelector("#bookingClassSelect"),
+  serviceDateInput: document.querySelector("#serviceDateInput"),
+  bookingOffers: document.querySelector("#bookingOffers"),
   heroTrain: document.querySelector("#heroTrain"),
   heroTitle: document.querySelector("#heroTitle"),
   heroAction: document.querySelector("#heroAction"),
@@ -94,16 +96,29 @@ function selectedCard() {
 
 function renderSelects() {
   if (!state.bootstrap) return;
-  els.trainSelect.innerHTML = state.bootstrap.trains.map((train) => (
-    `<option value="${train.trainNumber}">${train.trainNumber} ${train.name}</option>`
-  )).join("");
+  const previousFrom = els.boardingStationSelect.value || "NDLS";
+  const previousTo = els.destinationStationSelect.value || "CSMT";
   const stationOptions = state.bootstrap.stations.map((station) => (
     `<option value="${station.code}">${station.code} ${station.name}</option>`
   )).join("");
   els.boardingStationSelect.innerHTML = stationOptions;
   els.destinationStationSelect.innerHTML = stationOptions;
-  els.boardingStationSelect.value = "NDLS";
-  els.destinationStationSelect.value = "CSMT";
+  els.boardingStationSelect.value = previousFrom;
+  els.destinationStationSelect.value = previousTo === previousFrom ? "CSMT" : previousTo;
+  if (!els.serviceDateInput.value) {
+    els.serviceDateInput.value = new Date().toISOString().slice(0, 10);
+  }
+  renderBookingOffers(state.bootstrap.bookingOffers ?? []);
+}
+
+function renderBookingOffers(offers) {
+  els.bookingOffers.innerHTML = offers.length ? offers.slice(0, 3).map((offer) => `
+    <div class="offer-card" data-offer-id="${offer.id}">
+      <strong>${offer.trainNumber} ${offer.trainName}</strong>
+      <small>${offer.fromStationCode} to ${offer.toStationCode} - ${offer.classLabel} - ${offer.status}</small>
+      <small>Fare INR ${offer.fare} - Departs ${formatTime(offer.departureAt)}</small>
+    </div>
+  `).join("") : `<div class="offer-card"><strong>No seats found</strong><small>Change route, class, or date.</small></div>`;
 }
 
 function renderTrips() {
@@ -115,7 +130,7 @@ function renderTrips() {
     return `
       <button class="trip-button" type="button" data-trip-id="${card.trip.id}" aria-selected="${selected}">
         <strong>${card.train.trainNumber} ${card.train.name}</strong>
-        <small>${card.trip.passengerName} from ${card.boardingStation.code} to ${card.trip.destinationStationCode}</small>
+        <small>${card.trip.passengerName} - ${card.booking ? `PNR ${card.booking.pnr}` : "Trip"} - ${card.boardingStation.code} to ${card.trip.destinationStationCode}</small>
         <span class="badge ${severity}">${severity.toUpperCase()} · Platform ${card.platformState.currentPlatform}</span>
       </button>
     `;
@@ -151,7 +166,9 @@ function renderHero(card) {
   const risk = card.risk;
   const changed = platform.previousPlatform && platform.previousPlatform !== platform.currentPlatform;
 
-  els.heroTrain.textContent = `${card.train.trainNumber} ${card.train.name} · ${card.boardingStation.name}`;
+  els.heroTrain.textContent = card.booking?.pnr
+    ? `${card.train.trainNumber} ${card.train.name} · PNR ${card.booking.pnr}`
+    : `${card.train.trainNumber} ${card.train.name} · ${card.boardingStation.name}`;
   els.heroTitle.textContent = changed
     ? `Platform moved from ${platform.previousPlatform} to ${platform.currentPlatform}`
     : `${platform.currentPlatform ? `Platform ${platform.currentPlatform}` : "Platform pending"} for boarding`;
@@ -239,6 +256,10 @@ function renderOps() {
       <small>Active trips</small>
     </div>
     <div class="ops-metric">
+      <strong>${metrics.confirmedBookings}</strong>
+      <small>Confirmed bookings</small>
+    </div>
+    <div class="ops-metric">
       <strong>${metrics.acceptedCrowdReports}</strong>
       <small>Accepted crowd reports</small>
     </div>
@@ -278,17 +299,41 @@ function setupEvents() {
     event.preventDefault();
     const body = Object.fromEntries(new FormData(els.addTripForm));
     try {
-      const tripCard = await api("/api/trips", {
+      const result = await api("/api/bookings", {
         method: "POST",
         body: JSON.stringify(body)
       });
-      state.selectedTripId = tripCard.trip.id;
+      state.selectedTripId = result.tripCard.trip.id;
       await refresh();
-      showToast("Trip added");
+      showToast(`Booking confirmed: PNR ${result.booking.pnr}`);
     } catch (error) {
       showToast(error.message);
     }
   });
+
+  async function refreshBookingOffers() {
+    const params = new URLSearchParams({
+      from: els.boardingStationSelect.value,
+      to: els.destinationStationSelect.value,
+      classCode: els.bookingClassSelect.value,
+      date: els.serviceDateInput.value
+    });
+    try {
+      const result = await api(`/api/booking/search?${params}`);
+      renderBookingOffers(result.offers);
+    } catch (error) {
+      showToast(error.message);
+    }
+  }
+
+  for (const control of [
+    els.boardingStationSelect,
+    els.destinationStationSelect,
+    els.bookingClassSelect,
+    els.serviceDateInput
+  ]) {
+    control.addEventListener("change", refreshBookingOffers);
+  }
 
   els.crowdForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -378,7 +423,7 @@ function connectRealtime() {
   events.addEventListener("heartbeat", () => {
     els.connectionStatus.textContent = "Live";
   });
-  for (const eventName of ["platform.resolved", "alert.created", "crowd.reported", "trip.created", "data.reset"]) {
+  for (const eventName of ["platform.resolved", "alert.created", "crowd.reported", "trip.created", "booking.created", "data.reset"]) {
     events.addEventListener(eventName, async () => {
       await refresh();
     });

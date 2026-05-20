@@ -63,6 +63,17 @@ export function createSeedData(now = new Date()) {
       platforms: ["7", "9", "14", "18", "21"],
       areas: [],
       edges: []
+    },
+    {
+      id: "station-rkmp",
+      code: "RKMP",
+      name: "Rani Kamlapati",
+      city: "Bhopal",
+      state: "Madhya Pradesh",
+      congestionScore: 0.35,
+      platforms: ["1", "2", "3", "4", "5"],
+      areas: [],
+      edges: []
     }
   ];
 
@@ -109,6 +120,14 @@ export function createSeedData(now = new Date()) {
       serviceDate: isoDate(now),
       status: "scheduled",
       currentDelaySeconds: 0
+    },
+    {
+      id: "run-12301-today",
+      trainId: "train-12301",
+      trainNumber: "12301",
+      serviceDate: isoDate(now),
+      status: "scheduled",
+      currentDelaySeconds: 600
     }
   ];
 
@@ -192,12 +211,120 @@ export function createSeedData(now = new Date()) {
           summary: "Station display confirms Platform 4."
         }
       ]
+    },
+    {
+      id: "stop-12301-hwh",
+      trainRunId: "run-12301-today",
+      stationCode: "HWH",
+      stopSequence: 1,
+      scheduledDeparture: minutesFrom(now, 92),
+      predictedDeparture: minutesFrom(now, 102),
+      plannedPlatform: "9",
+      currentPlatform: "9",
+      previousPlatform: null,
+      platformStateVersion: 1,
+      confidence: 0.78,
+      confidenceLevel: "high",
+      stateKind: "official_confirmed",
+      newestObservedAt: minutesFrom(now, -8),
+      events: [
+        {
+          id: "evt-station-12301",
+          sourceKind: "official_station",
+          sourceName: "HWH station display",
+          platformNumber: "9",
+          assignmentKind: "confirmed",
+          sourceConfidence: 0.91,
+          observedAt: minutesFrom(now, -8),
+          createdAt: minutesFrom(now, -8),
+          summary: "Station display confirms Platform 9."
+        }
+      ]
     }
   ];
 
   const users = [];
   const trips = [];
   const alerts = [];
+  const bookings = [];
+  const bookingInventory = [
+    {
+      id: "offer-12952-ndls-csmt-3a",
+      trainNumber: "12952",
+      serviceDate: isoDate(now),
+      fromStationCode: "NDLS",
+      toStationCode: "CSMT",
+      classCode: "3A",
+      quota: "GN",
+      capacity: 48,
+      availableSeats: 18,
+      waitlist: 0,
+      fare: 2310,
+      currency: "INR",
+      coachPrefix: "B",
+      seatsPerCoach: 8,
+      departureAt: minutesFrom(now, 28),
+      arrivalAt: minutesFrom(now, 1030),
+      journeyHours: 16.7
+    },
+    {
+      id: "offer-12952-ndls-csmt-2a",
+      trainNumber: "12952",
+      serviceDate: isoDate(now),
+      fromStationCode: "NDLS",
+      toStationCode: "CSMT",
+      classCode: "2A",
+      quota: "GN",
+      capacity: 32,
+      availableSeats: 7,
+      waitlist: 0,
+      fare: 3425,
+      currency: "INR",
+      coachPrefix: "A",
+      seatsPerCoach: 6,
+      departureAt: minutesFrom(now, 28),
+      arrivalAt: minutesFrom(now, 1030),
+      journeyHours: 16.7
+    },
+    {
+      id: "offer-12002-ndls-rkmp-cc",
+      trainNumber: "12002",
+      serviceDate: isoDate(now),
+      fromStationCode: "NDLS",
+      toStationCode: "RKMP",
+      classCode: "CC",
+      quota: "GN",
+      capacity: 72,
+      availableSeats: 24,
+      waitlist: 0,
+      fare: 1395,
+      currency: "INR",
+      coachPrefix: "C",
+      seatsPerCoach: 12,
+      departureAt: minutesFrom(now, 58),
+      arrivalAt: minutesFrom(now, 545),
+      journeyHours: 8.1
+    },
+    {
+      id: "offer-12301-hwh-ndls-3a",
+      trainNumber: "12301",
+      serviceDate: isoDate(now),
+      fromStationCode: "HWH",
+      toStationCode: "NDLS",
+      classCode: "3A",
+      quota: "GN",
+      capacity: 48,
+      availableSeats: 5,
+      waitlist: 0,
+      fare: 2590,
+      currency: "INR",
+      coachPrefix: "B",
+      seatsPerCoach: 8,
+      departureAt: minutesFrom(now, 102),
+      arrivalAt: minutesFrom(now, 1160),
+      journeyHours: 17.6
+    }
+  ];
 
   return {
     schemaVersion: 1,
@@ -208,6 +335,8 @@ export function createSeedData(now = new Date()) {
     trainRunStops,
     users,
     trips,
+    bookings,
+    bookingInventory,
     crowdReports: [],
     alerts,
     incidents: []

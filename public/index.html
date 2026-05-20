@@ -28,14 +28,29 @@
           <div id="tripList" class="trip-list"></div>
 
           <form id="addTripForm" class="compact-form">
-            <h3>Add Journey</h3>
-            <label>
-              Train
-              <select name="trainNumber" id="trainSelect"></select>
-            </label>
+            <h3>Book Ticket</h3>
             <label>
               Passenger
-              <input name="passengerName" autocomplete="off">
+              <input name="passengerName" autocomplete="off" required>
+            </label>
+            <div class="split-fields">
+              <label>
+                Age
+                <input name="age" type="number" min="1" max="120" value="30" required>
+              </label>
+              <label>
+                Gender
+                <select name="gender">
+                  <option value="not_specified">Not specified</option>
+                  <option value="female">Female</option>
+                  <option value="male">Male</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+            </div>
+            <label>
+              Mobile
+              <input name="mobile" inputmode="tel" autocomplete="tel">
             </label>
             <div class="split-fields">
               <label>
@@ -49,9 +64,28 @@
             </div>
             <div class="split-fields">
               <label>
-                Coach
-                <input name="coach" autocomplete="off">
+                Class
+                <select name="classCode" id="bookingClassSelect">
+                  <option value="3A">AC 3 Tier</option>
+                  <option value="2A">AC 2 Tier</option>
+                  <option value="1A">AC First Class</option>
+                  <option value="SL">Sleeper</option>
+                  <option value="CC">AC Chair Car</option>
+                </select>
               </label>
+              <label>
+                Berth
+                <select name="berthPreference">
+                  <option value="no_preference">No preference</option>
+                  <option value="lb">Lower</option>
+                  <option value="mb">Middle</option>
+                  <option value="ub">Upper</option>
+                  <option value="sl">Side lower</option>
+                  <option value="su">Side upper</option>
+                </select>
+              </label>
+            </div>
+            <div class="split-fields">
               <label>
                 Mobility
                 <select name="mobilityProfile">
@@ -62,8 +96,13 @@
                   <option value="family">Family</option>
                 </select>
               </label>
+              <label>
+                Date
+                <input name="serviceDate" id="serviceDateInput" type="date" required>
+              </label>
             </div>
-            <button class="primary-button" type="submit">Add Trip</button>
+            <div id="bookingOffers" class="offer-list"></div>
+            <button class="primary-button" type="submit">Confirm Booking</button>
           </form>
         </aside>
 

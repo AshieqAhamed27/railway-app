@@ -33,25 +33,43 @@ test("bootstrap starts without passenger demo values", async () => {
   assert.equal(result.payload.tripCards.length, 0);
   assert.equal(result.payload.alerts.length, 0);
   assert.equal(result.payload.metrics.activeTrips, 0);
+  assert.equal(result.payload.metrics.confirmedBookings, 0);
 });
 
-test("adding a journey immediately creates train-specific platform-change alert", async () => {
+test("search returns bookable train offers", async () => {
   await callApi("/api/reset-data", { method: "POST" });
-  const result = await callApi("/api/trips", {
+  const result = await callApi("/api/booking/search?from=NDLS&to=CSMT&classCode=3A");
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.payload.offers.length, 1);
+  assert.equal(result.payload.offers[0].trainNumber, "12952");
+  assert.equal(result.payload.offers[0].status, "AVAILABLE");
+});
+
+test("booking creates pnr, ticket, active trip, and platform-change alert", async () => {
+  await callApi("/api/reset-data", { method: "POST" });
+  const result = await callApi("/api/bookings", {
     method: "POST",
     body: {
       passengerName: "Passenger",
-      trainNumber: "12952",
-      boardingStationCode: "NDLS",
-      destinationStationCode: "CSMT",
-      coach: "S1",
+      age: 30,
+      gender: "not_specified",
+      fromStationCode: "NDLS",
+      toStationCode: "CSMT",
+      classCode: "3A",
       mobilityProfile: "luggage"
     }
   });
 
   assert.equal(result.statusCode, 201);
-  assert.equal(result.payload.alerts.length, 1);
-  assert.equal(result.payload.alerts[0].title, "12952: Platform 5 -> 8 at NDLS");
-  assert.match(result.payload.alerts[0].body, /train 12952 Mumbai Rajdhani Express/);
-  assert.match(result.payload.alerts[0].body, /Previous platform was 5/);
+  assert.match(result.payload.booking.pnr, /^\d{10}$/);
+  assert.equal(result.payload.booking.status, "CONFIRMED");
+  assert.equal(result.payload.tripCard.alerts.length, 1);
+  assert.equal(result.payload.tripCard.alerts[0].title, "12952: Platform 5 -> 8 at NDLS");
+  assert.match(result.payload.tripCard.alerts[0].body, /train 12952 Mumbai Rajdhani Express/);
+  assert.match(result.payload.tripCard.alerts[0].body, /Previous platform was 5/);
+
+  const lookup = await callApi(`/api/bookings/${result.payload.booking.pnr}`);
+  assert.equal(lookup.statusCode, 200);
+  assert.equal(lookup.payload.booking.pnr, result.payload.booking.pnr);
 });

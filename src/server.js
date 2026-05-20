@@ -5,6 +5,13 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 import { createSeedData } from "./data/seed.js";
 import {
+  buildFareBreakup,
+  createPnr,
+  normalizePassenger,
+  reserveSeat,
+  searchBookingOffers
+} from "./domain/booking.js";
+import {
   computeTripRisk,
   computeWalkingMinutes,
   composePlatformNotification,
@@ -86,6 +93,10 @@ function findTrain(trainNumber) {
 
 function findTrainRun(trainNumber) {
   return state.trainRuns.find((run) => run.trainNumber === trainNumber);
+}
+
+function findBooking(pnr) {
+  return state.bookings.find((booking) => booking.pnr === String(pnr || "").trim());
 }
 
 function findStop(trainNumber, stationCode) {
@@ -298,6 +309,66 @@ function evaluateTripAlert(trip, stop) {
   return null;
 }
 
+function buildBookingTicket(booking) {
+  const train = findTrain(booking.trainNumber);
+  const fromStation = findStation(booking.fromStationCode);
+  const toStation = findStation(booking.toStationCode);
+  const trip = state.trips.find((item) => item.bookingId === booking.id);
+
+  return {
+    ...booking,
+    trainName: train?.name,
+    serviceType: train?.serviceType,
+    fromStation,
+    toStation,
+    tripId: trip?.id
+  };
+}
+
+function createBookedTrip({ booking, passenger, trainRun, inventory, seat }) {
+  const userId = randomUUID();
+  state.users.push({
+    id: userId,
+    displayName: passenger.name,
+    preferredLanguage: "en",
+    trustScore: 0.42,
+    emergencyModeEnabled: passenger.mobilityProfile === "emergency"
+  });
+
+  const boardingStation = findStation(inventory.fromStationCode);
+  const trip = {
+    id: randomUUID(),
+    bookingId: booking.id,
+    pnr: booking.pnr,
+    userId,
+    passengerName: passenger.name,
+    trainRunId: trainRun.id,
+    trainNumber: trainRun.trainNumber,
+    boardingStationCode: inventory.fromStationCode,
+    destinationStationCode: inventory.toStationCode,
+    coach: seat.coach,
+    berth: `${seat.seatNumber}${seat.berth}`,
+    travelClass: inventory.classCode,
+    familyGroupName: "",
+    mobilityProfile: passenger.mobilityProfile,
+    currentAreaId: boardingStation?.areas?.[0]?.id || "station entrance",
+    trackingMode: passenger.mobilityProfile === "family" ? "family" : "normal",
+    status: "active",
+    createdAt: new Date().toISOString()
+  };
+
+  state.trips.unshift(trip);
+  const stop = state.trainRunStops.find((item) => (
+    item.trainRunId === trip.trainRunId &&
+    item.stationCode === trip.boardingStationCode
+  ));
+  if (stop) {
+    evaluateTripAlert(trip, stop);
+  }
+
+  return trip;
+}
+
 function refreshTripAlerts(stop) {
   const run = state.trainRuns.find((item) => item.id === stop.trainRunId);
   const affectedTrips = state.trips.filter((trip) => (
@@ -343,6 +414,7 @@ function buildTripCard(trip) {
 
   return {
     trip,
+    booking: state.bookings.find((booking) => booking.id === trip.bookingId) ?? null,
     train,
     trainRun,
     boardingStation: station,
@@ -377,11 +449,19 @@ function buildBootstrap() {
     generatedAt: new Date().toISOString(),
     stations: state.stations,
     trains: state.trains,
+    bookingOffers: searchBookingOffers({
+      state,
+      from: "NDLS",
+      to: "CSMT",
+      serviceDate: state.trainRuns[0]?.serviceDate
+    }),
+    bookings: state.bookings.map(buildBookingTicket).slice(0, 10),
     tripCards,
     alerts: state.alerts.slice(0, 12),
     incidents: state.incidents.slice(0, 8),
     metrics: {
       activeTrips: state.trips.filter((trip) => trip.status === "active").length,
+      confirmedBookings: state.bookings.filter((booking) => booking.status === "CONFIRMED").length,
       openIncidents: state.incidents.filter((incident) => incident.status === "open").length,
       acceptedCrowdReports: state.crowdReports.filter((report) => report.accepted).length,
       criticalAlerts: state.alerts.filter((alert) => alert.severity === "critical").length
@@ -424,6 +504,90 @@ export async function handleApi(request, response) {
 
   if (method === "GET" && requestUrl.pathname === "/api/bootstrap") {
     sendJson(response, 200, buildBootstrap());
+    return;
+  }
+
+  if (method === "GET" && requestUrl.pathname === "/api/booking/search") {
+    const offers = searchBookingOffers({
+      state,
+      from: requestUrl.searchParams.get("from"),
+      to: requestUrl.searchParams.get("to"),
+      serviceDate: requestUrl.searchParams.get("date"),
+      classCode: requestUrl.searchParams.get("classCode")
+    });
+    sendJson(response, 200, { offers });
+    return;
+  }
+
+  if (method === "GET" && requestUrl.pathname.startsWith("/api/bookings/")) {
+    const pnr = requestUrl.pathname.split("/")[3];
+    const booking = findBooking(pnr);
+    if (!booking) {
+      notFound(response);
+      return;
+    }
+    sendJson(response, 200, { booking: buildBookingTicket(booking) });
+    return;
+  }
+
+  if (method === "POST" && requestUrl.pathname === "/api/bookings") {
+    const body = await readJson(request);
+    const passenger = normalizePassenger(body);
+    const offerId = body.offerId || searchBookingOffers({
+      state,
+      from: body.fromStationCode,
+      to: body.toStationCode,
+      serviceDate: body.serviceDate,
+      classCode: body.classCode
+    })[0]?.id;
+
+    const reservation = reserveSeat({ state, offerId, passenger });
+    if (!reservation.ok) {
+      badRequest(response, reservation.reason);
+      return;
+    }
+
+    const { inventory, seat } = reservation;
+    const trainRun = findTrainRun(inventory.trainNumber);
+    const train = findTrain(inventory.trainNumber);
+    if (!trainRun || !train) {
+      badRequest(response, "Train run is not available for booking.");
+      return;
+    }
+
+    const pnr = createPnr(`${inventory.trainNumber}${state.bookings.length + 1}`);
+    const booking = {
+      id: randomUUID(),
+      pnr,
+      status: "CONFIRMED",
+      source: "railway-intelligence-booking",
+      trainNumber: inventory.trainNumber,
+      trainName: train.name,
+      serviceDate: inventory.serviceDate,
+      fromStationCode: inventory.fromStationCode,
+      toStationCode: inventory.toStationCode,
+      classCode: inventory.classCode,
+      quota: inventory.quota,
+      coach: seat.coach,
+      seatNumber: seat.seatNumber,
+      berth: seat.berth,
+      passenger,
+      fare: inventory.fare,
+      currency: inventory.currency,
+      fareBreakup: buildFareBreakup(inventory.fare),
+      departureAt: inventory.departureAt,
+      arrivalAt: inventory.arrivalAt,
+      bookedAt: new Date().toISOString(),
+      paymentStatus: "CONFIRMED",
+      advisory: "Ticketing is handled inside this pilot system. Production railway booking requires official railway integration."
+    };
+
+    state.bookings.unshift(booking);
+    const trip = createBookedTrip({ booking, passenger, trainRun, inventory, seat });
+    const tripCard = buildTripCard(trip);
+    const ticket = buildBookingTicket(booking);
+    publish("booking.created", { booking: ticket, tripCard });
+    sendJson(response, 201, { booking: ticket, tripCard });
     return;
   }
 

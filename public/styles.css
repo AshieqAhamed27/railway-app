@@ -453,6 +453,29 @@ button {
   margin-top: 14px;
 }
 
+.offer-list {
+  display: grid;
+  gap: 8px;
+}
+
+.offer-card {
+  background: #fbfaf6;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+}
+
+.offer-card strong {
+  font-size: 13px;
+}
+
+.offer-card small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .timeline-item,
 .alert-item,
 .ops-metric {

@@ -4,6 +4,16 @@ Mission: eliminate platform confusion and missed trains caused by last-minute pl
 
 This repository now includes a runnable full-stack pilot application plus the original production architecture pack. The app focuses on the highest-value passenger workflow: live platform state, confidence/provenance, station walking risk, crowd confirmation, alerting, and an operator input surface.
 
+## Current Product Flow
+
+- Search bookable train inventory by route, date, and travel class.
+- Confirm a booking with passenger/contact details.
+- Receive a PNR-style booking reference, fare breakup, coach, seat, and berth assignment.
+- Automatically start live platform monitoring for the booked passenger.
+- Show train-specific platform-change alerts such as `12952: Platform 5 -> 8 at NDLS`.
+
+This is a pilot booking engine with in-memory inventory. Real Indian Railways ticket issuance would require official railway/IRCTC integration, compliance review, and payment settlement.
+
 ## Run The App
 
 ```bash
@@ -45,6 +55,7 @@ In the Vercel dashboard, keep the default static/build settings and do not set t
 - `RAILWAY_INTELLIGENCE_PLATFORM_ARCHITECTURE.md` - full system architecture, data platform, AI pipeline, realtime notification pipeline, reliability model, rollout plan, moat strategy, legal and partnership requirements.
 - `database_schema.sql` - initial relational and time-series schema for PostgreSQL plus TimescaleDB.
 - `src/server.js` - full-stack Node server, REST API, realtime event stream, routing and alert orchestration.
+- `src/domain/booking.js` - booking search, fare breakup, seat reservation, and PNR-style reference helpers.
 - `src/domain/intelligence.js` - confidence scoring, crowd trust scoring, platform reconciliation, and trip-risk logic.
 - `src/data/seed.js` - realistic pilot data for NDLS and active train trips.
 - `public/` - passenger operations frontend.
