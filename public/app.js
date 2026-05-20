@@ -198,6 +198,7 @@ function renderAlerts(card) {
   els.alerts.innerHTML = card.alerts.length ? card.alerts.map((alert) => `
     <div class="alert-item ${alert.severity}">
       <strong>${alert.title}</strong>
+      ${alert.trainNumber ? `<small>Train ${alert.trainNumber} - ${alert.stationCode || card.boardingStation.code} - Platform ${alert.previousPlatform || card.platformState.plannedPlatform || "--"} to ${alert.currentPlatform || card.platformState.currentPlatform}</small>` : ""}
       <small>${alert.body}</small>
       <small>${formatAge(alert.createdAt)} · ${pct(alert.confidence)} confidence</small>
       ${alert.acknowledged ? "<small>Acknowledged</small>" : `<button class="alert-action" type="button" data-alert-id="${alert.id}">Acknowledge</button>`}

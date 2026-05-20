@@ -7,6 +7,7 @@ import { createSeedData } from "./data/seed.js";
 import {
   computeTripRisk,
   computeWalkingMinutes,
+  composePlatformNotification,
   confidenceLevel,
   reconcilePlatform,
   scoreCrowdReport,
@@ -226,20 +227,40 @@ function buildAlert({ trip, stop, risk, route, kind = "platform_change" }) {
   const existing = state.alerts.find((alert) => alert.idempotencyKey === idempotencyKey);
   if (existing) return existing;
 
-  const title = risk.severity === "critical"
-    ? `Move now to Platform ${stop.currentPlatform}`
-    : stop.previousPlatform && stop.previousPlatform !== stop.currentPlatform
-      ? `Platform changed to ${stop.currentPlatform}`
-      : `Platform ${stop.currentPlatform} needs attention`;
+  const trainRun = state.trainRuns.find((run) => run.id === stop.trainRunId);
+  const train = state.trains.find((item) => item.id === trainRun?.trainId);
+  const station = findStation(stop.stationCode);
+  const notification = composePlatformNotification({
+    passengerName: trip.passengerName,
+    trainNumber: trainRun?.trainNumber ?? trip.trainNumber,
+    trainName: train?.name,
+    stationCode: stop.stationCode,
+    stationName: station?.name,
+    previousPlatform: stop.previousPlatform,
+    plannedPlatform: stop.plannedPlatform,
+    currentPlatform: stop.currentPlatform,
+    confidence: stop.confidence,
+    stateKind: stop.stateKind,
+    risk,
+    route
+  });
 
   const alert = {
     id: randomUUID(),
     tripId: trip.id,
     trainRunStopId: stop.id,
+    trainNumber: trainRun?.trainNumber ?? trip.trainNumber,
+    trainName: train?.name,
+    passengerName: trip.passengerName,
+    stationCode: stop.stationCode,
+    previousPlatform: notification.previousPlatform,
+    currentPlatform: notification.currentPlatform,
+    platformStateVersion: stop.platformStateVersion,
     kind,
     severity: risk.severity,
-    title,
-    body: `${risk.nextAction} Walking estimate: ${risk.walkingMinutes} min via ${route.steps[0]?.to ?? "station route"}.`,
+    title: notification.title,
+    body: notification.body,
+    shortBody: notification.shortBody,
     confidence: stop.confidence,
     idempotencyKey,
     acknowledged: false,

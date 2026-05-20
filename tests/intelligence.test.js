@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  composePlatformNotification,
   confidenceLevel,
   computeTripRisk,
   reconcilePlatform,
@@ -69,4 +70,30 @@ test("crowd report scoring accepts fresh nearby display-board evidence", () => {
 
   assert.equal(result.accepted, true);
   assert.ok(result.trustWeight >= 0.6);
+});
+
+test("platform notification includes train number and platform change", () => {
+  const notification = composePlatformNotification({
+    passengerName: "Asha Mehta",
+    trainNumber: "12952",
+    trainName: "Mumbai Rajdhani Express",
+    stationCode: "NDLS",
+    previousPlatform: "5",
+    currentPlatform: "8",
+    confidence: 0.93,
+    risk: {
+      severity: "urgent",
+      minutesUntilDeparture: 28,
+      walkingMinutes: 11,
+      nextAction: "Head toward Platform 8 and recheck the board before the footbridge."
+    },
+    route: {
+      steps: [{ to: "Main Concourse" }]
+    }
+  });
+
+  assert.equal(notification.title, "12952: Platform 5 -> 8 at NDLS");
+  assert.match(notification.body, /train 12952 Mumbai Rajdhani Express/);
+  assert.match(notification.body, /Previous platform was 5/);
+  assert.match(notification.body, /Platform 8/);
 });

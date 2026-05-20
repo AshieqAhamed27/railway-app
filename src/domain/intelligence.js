@@ -241,3 +241,50 @@ export function shouldCreateAlert({ risk, confidence, platformChanged, dataStale
   if (platformChanged && confidence >= 0.55) return true;
   return Boolean(dataStale && risk.severity === "attention");
 }
+
+export function composePlatformNotification(input) {
+  const confidencePercent = Math.round(clamp(input.confidence ?? 0) * 100);
+  const trainNumber = input.trainNumber || "Train";
+  const trainName = input.trainName ? ` ${input.trainName}` : "";
+  const station = input.stationCode || input.stationName || "station";
+  const passenger = input.passengerName || "Passenger";
+  const currentPlatform = input.currentPlatform || input.platformNumber || "pending";
+  const previousPlatform = input.previousPlatform || input.plannedPlatform || null;
+  const platformChanged = previousPlatform && previousPlatform !== currentPlatform;
+  const routeStart = input.route?.steps?.[0]?.to;
+  const routeHint = routeStart ? `Route starts toward ${routeStart}.` : "Use the fastest visible station route.";
+  const departureHint = Number.isFinite(input.risk?.minutesUntilDeparture)
+    ? `Departure in ${input.risk.minutesUntilDeparture} min; walking estimate ${input.risk.walkingMinutes} min.`
+    : "";
+  const verifyHint = input.stateKind === "conflict"
+    ? "Evidence conflicts, so verify with the nearest display board or railway staff while moving."
+    : "Verify once on the next station display board while moving.";
+
+  let title = `${trainNumber}: Platform ${currentPlatform} at ${station}`;
+  if (platformChanged) {
+    title = `${trainNumber}: Platform ${previousPlatform} -> ${currentPlatform} at ${station}`;
+  }
+  if (input.risk?.severity === "critical") {
+    title = `${trainNumber}: move now to Platform ${currentPlatform}`;
+  }
+
+  const bodyParts = [
+    `${passenger}, train ${trainNumber}${trainName} is now assigned to Platform ${currentPlatform} at ${station}.`,
+    platformChanged ? `Previous platform was ${previousPlatform}.` : "No platform change is currently detected.",
+    input.risk?.nextAction,
+    `${confidencePercent}% confidence.`,
+    departureHint,
+    routeHint,
+    verifyHint
+  ].filter(Boolean);
+
+  return {
+    title,
+    body: bodyParts.join(" "),
+    shortBody: `Train ${trainNumber} at ${station}: Platform ${currentPlatform}${platformChanged ? `, changed from ${previousPlatform}` : ""}.`,
+    platformChanged,
+    confidencePercent,
+    currentPlatform,
+    previousPlatform
+  };
+}
