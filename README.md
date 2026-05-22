@@ -13,6 +13,7 @@ This repository now includes a runnable full-stack pilot application plus the or
 - Automatically start live platform monitoring for the booked passenger.
 - Track an existing booking by PNR inside the app.
 - Show train-specific platform-change alerts such as `12952: Platform 5 -> 8 at NDLS`.
+- Search From/To fields against an offline station master with 8,000+ Indian railway station codes.
 
 This is a pilot booking engine with in-memory inventory. Real Indian Railways ticket issuance would require official railway/IRCTC integration, compliance review, and payment settlement.
 
@@ -60,6 +61,7 @@ In the Vercel dashboard, keep the default static/build settings and do not set t
 - `src/domain/booking.js` - booking search, fare breakup, seat reservation, and PNR-style reference helpers.
 - `src/domain/intelligence.js` - confidence scoring, crowd trust scoring, platform reconciliation, and trip-risk logic.
 - `src/data/seed.js` - national pilot station, train, platform, and booking inventory data.
+- `src/data/india-station-master.js` - generated CC0 station master used for broad station autocomplete coverage.
 - `public/` - passenger operations frontend.
 - `tests/` - Node test coverage for the core intelligence rules.
 

@@ -70,12 +70,14 @@ test("station suggestions include major India stations and stay payload-light", 
   const bengaluru = await callApi("/api/stations/search?q=bengaluru&limit=10");
   const ghaziabad = await callApi("/api/stations/search?q=ghaziabad");
   const guwahati = await callApi("/api/stations/search?q=guwahati");
+  const nellikuppam = await callApi("/api/stations/search?q=nellikuppam");
 
   assert.equal(bootstrap.statusCode, 200);
-  assert.ok(bootstrap.payload.metrics.stationsIndexed >= 200);
+  assert.ok(bootstrap.payload.metrics.stationsIndexed >= 8000);
   assert.ok(bengaluru.payload.stations.some((station) => station.code === "SBC"));
   assert.ok(ghaziabad.payload.stations.some((station) => station.code === "GZB"));
   assert.ok(guwahati.payload.stations.some((station) => station.code === "GHY"));
+  assert.ok(nellikuppam.payload.stations.some((station) => station.code === "NPM"));
   assert.equal(Object.hasOwn(bengaluru.payload.stations[0], "areas"), false);
   assert.equal(Object.hasOwn(bengaluru.payload.stations[0], "edges"), false);
 });

@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "build": "node --check src/server.js && node --check src/data/seed.js && node --check src/domain/intelligence.js && node --check src/domain/booking.js && node --check api/index.js && node --check api/events.js && node --check public/app.js",
+    "build": "node --check src/server.js && node --check src/data/seed.js && node --check src/data/india-station-master.js && node --check src/domain/intelligence.js && node --check src/domain/booking.js && node --check api/index.js && node --check api/events.js && node --check public/app.js",
     "test": "node --test"
   },
   "engines": {

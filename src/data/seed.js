@@ -1,3 +1,5 @@
+import { INDIA_STATION_MASTER } from "./india-station-master.js";
+
 function minutesFrom(now, minutes) {
   return new Date(now.getTime() + minutes * 60000).toISOString();
 }
@@ -480,6 +482,20 @@ export function createSeedData(now = new Date()) {
       platforms: ["1", "2", "3", "4"]
     }));
     existingStationCodes.add(code);
+  }
+  for (const item of INDIA_STATION_MASTER) {
+    if (existingStationCodes.has(item.code)) continue;
+    stations.push(station({
+      code: item.code,
+      name: item.name,
+      city: item.city || item.name,
+      state: item.state || "India",
+      zone: item.zone || "Indian Railways",
+      congestionScore: 0.28,
+      platforms: ["1", "2"],
+      aliases: item.city && item.city !== item.name ? [item.city] : []
+    }));
+    existingStationCodes.add(item.code);
   }
 
   const trains = [
