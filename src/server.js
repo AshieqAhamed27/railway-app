@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createSeedData } from "./data/seed.js";
 import {
   buildFareBreakup,
@@ -99,10 +99,106 @@ function findBooking(pnr) {
   return state.bookings.find((booking) => booking.pnr === String(pnr || "").trim());
 }
 
+function hashPassword(password) {
+  return createHash("sha256").update(String(password || "")).digest("hex");
+}
+
+function sanitizeAccount(account) {
+  if (!account) return null;
+  return {
+    id: account.id,
+    name: account.name,
+    email: account.email,
+    mobile: account.mobile,
+    createdAt: account.createdAt
+  };
+}
+
+function authenticate(request) {
+  const header = request.headers.authorization || request.headers.Authorization || "";
+  const token = String(header).replace(/^Bearer\s+/i, "").trim();
+  const session = state.sessions?.find((item) => item.token === token);
+  if (!session) return null;
+  return state.accounts?.find((account) => account.id === session.accountId) ?? null;
+}
+
 function findStop(trainNumber, stationCode) {
   const run = findTrainRun(trainNumber);
   if (!run) return null;
   return state.trainRunStops.find((stop) => stop.trainRunId === run.id && stop.stationCode === stationCode);
+}
+
+function searchStations(query, limit = 15) {
+  const q = String(query || "").trim().toLowerCase();
+  const ranked = state.stations
+    .map((station) => {
+      const code = station.code.toLowerCase();
+      const name = station.name.toLowerCase();
+      const city = station.city.toLowerCase();
+      const haystack = `${code} ${name} ${city} ${station.state.toLowerCase()} ${(station.aliases || []).join(" ").toLowerCase()}`;
+      let score = 0;
+      if (!q) score = 1;
+      else if (code === q) score = 100;
+      else if (code.startsWith(q)) score = 90;
+      else if (name.startsWith(q) || city.startsWith(q)) score = 75;
+      else if (haystack.includes(q)) score = 45;
+      return { station, score };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.station.name.localeCompare(b.station.name))
+    .slice(0, limit)
+    .map((item) => item.station);
+  return ranked;
+}
+
+function buildLiveTrain(trainNumber) {
+  const train = findTrain(trainNumber);
+  const run = findTrainRun(trainNumber);
+  if (!train || !run) return null;
+  const stops = state.trainRunStops
+    .filter((stop) => stop.trainRunId === run.id)
+    .sort((a, b) => a.stopSequence - b.stopSequence)
+    .map((stop) => ({
+      ...stop,
+      station: findStation(stop.stationCode)
+    }));
+  const nextStop = stops[0] ?? null;
+  return {
+    trainNumber: train.trainNumber,
+    trainName: train.name,
+    serviceType: train.serviceType,
+    origin: findStation(train.origin) ?? { code: train.origin },
+    destination: findStation(train.destination) ?? { code: train.destination },
+    serviceDate: run.serviceDate,
+    status: run.status,
+    delaySeconds: run.currentDelaySeconds,
+    nextStop,
+    currentPlatform: nextStop?.currentPlatform ?? null,
+    plannedPlatform: nextStop?.plannedPlatform ?? null,
+    platformChanged: Boolean(nextStop?.previousPlatform && nextStop.previousPlatform !== nextStop.currentPlatform),
+    confidence: nextStop?.confidence ?? null,
+    lastVerifiedAt: nextStop?.newestObservedAt ?? state.generatedAt,
+    message: nextStop
+      ? `${train.trainNumber} ${train.name} is ${run.status} at ${nextStop.stationCode}. Platform ${nextStop.currentPlatform || "pending"}.`
+      : `${train.trainNumber} ${train.name} live platform data is pending.`
+  };
+}
+
+function searchLiveTrains(query) {
+  const q = String(query || "").trim().toLowerCase();
+  return state.trains
+    .filter((train) => {
+      if (!q) return true;
+      return (
+        train.trainNumber.includes(q) ||
+        train.name.toLowerCase().includes(q) ||
+        train.origin.toLowerCase().includes(q) ||
+        train.destination.toLowerCase().includes(q)
+      );
+    })
+    .slice(0, 12)
+    .map((train) => buildLiveTrain(train.trainNumber))
+    .filter(Boolean);
 }
 
 function getArea(station, areaId) {
@@ -511,6 +607,8 @@ function buildBootstrap() {
     metrics: {
       activeTrips: state.trips.filter((trip) => trip.status === "active").length,
       confirmedBookings: state.bookings.filter((booking) => booking.status === "CONFIRMED").length,
+      stationsIndexed: state.stations.length,
+      liveTrains: state.trainRuns.length,
       openIncidents: state.incidents.filter((incident) => incident.status === "open").length,
       acceptedCrowdReports: state.crowdReports.filter((report) => report.accepted).length,
       criticalAlerts: state.alerts.filter((alert) => alert.severity === "critical").length
@@ -556,6 +654,75 @@ export async function handleApi(request, response) {
     return;
   }
 
+  if (method === "GET" && requestUrl.pathname === "/api/stations/search") {
+    const stations = searchStations(requestUrl.searchParams.get("q"), Number(requestUrl.searchParams.get("limit") || 20));
+    sendJson(response, 200, { stations });
+    return;
+  }
+
+  if (method === "GET" && requestUrl.pathname === "/api/trains/live") {
+    sendJson(response, 200, { trains: searchLiveTrains(requestUrl.searchParams.get("q")) });
+    return;
+  }
+
+  if (method === "GET" && requestUrl.pathname.startsWith("/api/trains/") && requestUrl.pathname.endsWith("/live")) {
+    const trainNumber = requestUrl.pathname.split("/")[3];
+    const train = buildLiveTrain(trainNumber);
+    if (!train) {
+      notFound(response);
+      return;
+    }
+    sendJson(response, 200, { train });
+    return;
+  }
+
+  if (method === "GET" && requestUrl.pathname === "/api/auth/me") {
+    const account = authenticate(request);
+    sendJson(response, 200, { account: sanitizeAccount(account) });
+    return;
+  }
+
+  if (method === "POST" && requestUrl.pathname === "/api/auth/signup") {
+    const body = await readJson(request);
+    const email = String(body.email || "").trim().toLowerCase();
+    const password = String(body.password || "");
+    if (!email || password.length < 6) {
+      badRequest(response, "Email and a 6 character password are required.");
+      return;
+    }
+    if (state.accounts.some((account) => account.email === email)) {
+      badRequest(response, "This email is already registered.");
+      return;
+    }
+    const account = {
+      id: randomUUID(),
+      name: String(body.name || "Passenger").trim() || "Passenger",
+      email,
+      mobile: String(body.mobile || "").trim(),
+      passwordHash: hashPassword(password),
+      createdAt: new Date().toISOString()
+    };
+    const token = randomUUID();
+    state.accounts.push(account);
+    state.sessions.push({ token, accountId: account.id, createdAt: new Date().toISOString() });
+    sendJson(response, 201, { account: sanitizeAccount(account), token });
+    return;
+  }
+
+  if (method === "POST" && requestUrl.pathname === "/api/auth/login") {
+    const body = await readJson(request);
+    const email = String(body.email || "").trim().toLowerCase();
+    const account = state.accounts.find((item) => item.email === email);
+    if (!account || account.passwordHash !== hashPassword(body.password)) {
+      badRequest(response, "Invalid email or password.");
+      return;
+    }
+    const token = randomUUID();
+    state.sessions.push({ token, accountId: account.id, createdAt: new Date().toISOString() });
+    sendJson(response, 200, { account: sanitizeAccount(account), token });
+    return;
+  }
+
   if (method === "GET" && requestUrl.pathname === "/api/booking/search") {
     const offers = searchBookingOffers({
       state,
@@ -581,6 +748,7 @@ export async function handleApi(request, response) {
 
   if (method === "POST" && requestUrl.pathname === "/api/bookings") {
     const body = await readJson(request);
+    const account = authenticate(request);
     const passenger = normalizePassenger(body);
     const fromStationCode = body.fromStationCode || body.boardingStationCode;
     const toStationCode = body.toStationCode || body.destinationStationCode;
@@ -610,6 +778,7 @@ export async function handleApi(request, response) {
     const pnr = createPnr(`${inventory.trainNumber}${state.bookings.length + 1}`);
     const booking = {
       id: randomUUID(),
+      accountId: account?.id ?? null,
       pnr,
       status: "CONFIRMED",
       source: "railway-intelligence-booking",

@@ -82,6 +82,66 @@ button:disabled {
   gap: 10px;
 }
 
+.user-chip,
+.live-indicator {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 850;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+}
+
+.user-chip {
+  background: var(--blue-soft);
+  border: 1px solid #c6d7f7;
+  color: var(--blue);
+}
+
+.live-indicator {
+  background: var(--green-soft);
+  border: 1px solid #b7dfc6;
+  color: var(--green);
+}
+
+.auth-panel {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(210px, 0.8fr) minmax(0, 1.4fr) minmax(0, 0.9fr);
+  margin-bottom: 18px;
+}
+
+.auth-panel.signed-in {
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.auth-panel h2 {
+  font-size: 19px;
+  margin: 2px 0 0;
+}
+
+.auth-panel small {
+  color: var(--muted);
+}
+
+.auth-form {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+}
+
+#signupForm {
+  grid-template-columns: minmax(130px, 1fr) minmax(150px, 1fr) minmax(120px, 0.8fr) minmax(130px, 0.9fr) 128px;
+}
+
+#loginForm {
+  grid-template-columns: minmax(150px, 1fr) minmax(130px, 1fr) 92px;
+}
+
 .booking-layout {
   display: grid;
   gap: 18px;
@@ -211,6 +271,7 @@ select:focus {
 .trip-list,
 .timeline,
 .alert-list,
+.live-train-results,
 .ops-metrics {
   display: grid;
   gap: 10px;
@@ -407,6 +468,7 @@ select:focus {
 .empty-card,
 .timeline-item,
 .alert-item,
+.live-train-card,
 .ops-metric {
   background: #fff;
   border: 1px solid var(--line);
@@ -414,6 +476,10 @@ select:focus {
   display: grid;
   gap: 8px;
   padding: 12px;
+}
+
+.live-train-card {
+  align-items: start;
 }
 
 .trip-button {
@@ -683,6 +749,12 @@ select:focus {
 
 @media (max-width: 1120px) {
   .booking-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-panel,
+  #signupForm,
+  #loginForm {
     grid-template-columns: 1fr;
   }
 

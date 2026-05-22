@@ -13,13 +13,131 @@ function isoDate(now) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-function station({ code, name, city, state, congestionScore, platforms }) {
+const ALL_INDIA_STATION_CATALOG = [
+  ["AGTL", "Agartala", "Agartala", "Tripura", "Northeast Frontier"],
+  ["AII", "Ajmer Junction", "Ajmer", "Rajasthan", "North Western"],
+  ["AJP", "Ajjampur", "Chikkamagaluru", "Karnataka", "South Western"],
+  ["AADR", "Amb Andaura", "Una", "Himachal Pradesh", "Northern"],
+  ["UMB", "Ambala Cantt", "Ambala", "Haryana", "Northern"],
+  ["ASN", "Asansol Junction", "Asansol", "West Bengal", "Eastern"],
+  ["ADI", "Ahmedabad Junction", "Ahmedabad", "Gujarat", "Western"],
+  ["AF", "Agra Fort", "Agra", "Uttar Pradesh", "North Central"],
+  ["AGC", "Agra Cantt", "Agra", "Uttar Pradesh", "North Central"],
+  ["AWR", "Alwar Junction", "Alwar", "Rajasthan", "North Western"],
+  ["ALD", "Prayagraj Junction", "Prayagraj", "Uttar Pradesh", "North Central"],
+  ["ALLP", "Alappuzha", "Alappuzha", "Kerala", "Southern"],
+  ["ANVT", "Anand Vihar Terminal", "Delhi", "Delhi", "Northern"],
+  ["AUBR", "Anugraha Narayan Road", "Aurangabad", "Bihar", "East Central"],
+  ["AWY", "Aluva", "Kochi", "Kerala", "Southern"],
+  ["BBS", "Bhubaneswar", "Bhubaneswar", "Odisha", "East Coast"],
+  ["BCT", "Mumbai Central", "Mumbai", "Maharashtra", "Western"],
+  ["BE", "Bareilly Junction", "Bareilly", "Uttar Pradesh", "North Eastern"],
+  ["BGP", "Bhagalpur", "Bhagalpur", "Bihar", "Eastern"],
+  ["BHL", "Bhilwara", "Bhilwara", "Rajasthan", "North Western"],
+  ["BHO", "Bhopal Junction", "Bhopal", "Madhya Pradesh", "West Central"],
+  ["BJP", "Vijayapura", "Vijayapura", "Karnataka", "South Western"],
+  ["BKN", "Bikaner Junction", "Bikaner", "Rajasthan", "North Western"],
+  ["BNC", "Bengaluru Cantonment", "Bengaluru", "Karnataka", "South Western"],
+  ["BPL", "Bhopal Junction", "Bhopal", "Madhya Pradesh", "West Central"],
+  ["BRC", "Vadodara Junction", "Vadodara", "Gujarat", "Western"],
+  ["BSB", "Varanasi Junction", "Varanasi", "Uttar Pradesh", "Northern"],
+  ["BSP", "Bilaspur Junction", "Bilaspur", "Chhattisgarh", "South East Central"],
+  ["BVI", "Borivali", "Mumbai", "Maharashtra", "Western"],
+  ["BZA", "Vijayawada Junction", "Vijayawada", "Andhra Pradesh", "South Central"],
+  ["CAN", "Kannur", "Kannur", "Kerala", "Southern"],
+  ["CDG", "Chandigarh", "Chandigarh", "Chandigarh", "Northern"],
+  ["CBE", "Coimbatore Junction", "Coimbatore", "Tamil Nadu", "Southern"],
+  ["CBJ", "Clutterbuckganj", "Bareilly", "Uttar Pradesh", "North Eastern"],
+  ["CGL", "Chengalpattu Junction", "Chengalpattu", "Tamil Nadu", "Southern"],
+  ["CNB", "Kanpur Central", "Kanpur", "Uttar Pradesh", "North Central"],
+  ["CTC", "Cuttack", "Cuttack", "Odisha", "East Coast"],
+  ["CPR", "Chhapra Junction", "Chhapra", "Bihar", "North Eastern"],
+  ["CSMT", "Mumbai CSMT", "Mumbai", "Maharashtra", "Central"],
+  ["DBG", "Darbhanga Junction", "Darbhanga", "Bihar", "East Central"],
+  ["DDN", "Dehradun", "Dehradun", "Uttarakhand", "Northern"],
+  ["DEE", "Delhi Sarai Rohilla", "Delhi", "Delhi", "Northern"],
+  ["DLI", "Old Delhi", "Delhi", "Delhi", "Northern"],
+  ["DNR", "Danapur", "Patna", "Bihar", "East Central"],
+  ["DURG", "Durg", "Durg", "Chhattisgarh", "South East Central"],
+  ["ERS", "Ernakulam Junction", "Kochi", "Kerala", "Southern"],
+  ["ERN", "Ernakulam Town", "Kochi", "Kerala", "Southern"],
+  ["GAYA", "Gaya Junction", "Gaya", "Bihar", "East Central"],
+  ["GKP", "Gorakhpur Junction", "Gorakhpur", "Uttar Pradesh", "North Eastern"],
+  ["GNT", "Guntur Junction", "Guntur", "Andhra Pradesh", "South Central"],
+  ["GWL", "Gwalior Junction", "Gwalior", "Madhya Pradesh", "North Central"],
+  ["HAPA", "Hapa", "Jamnagar", "Gujarat", "Western"],
+  ["HDB", "Haldibari", "Jalpaiguri", "West Bengal", "Northeast Frontier"],
+  ["HDW", "Haldwani", "Haldwani", "Uttarakhand", "North Eastern"],
+  ["HWH", "Howrah Junction", "Howrah", "West Bengal", "Eastern"],
+  ["HYB", "Hyderabad Deccan", "Hyderabad", "Telangana", "South Central"],
+  ["INDB", "Indore Junction", "Indore", "Madhya Pradesh", "Western"],
+  ["IPR", "Islampur", "Nalanda", "Bihar", "East Central"],
+  ["JAT", "Jammu Tawi", "Jammu", "Jammu and Kashmir", "Northern"],
+  ["JBP", "Jabalpur", "Jabalpur", "Madhya Pradesh", "West Central"],
+  ["JP", "Jaipur Junction", "Jaipur", "Rajasthan", "North Western"],
+  ["JHS", "Virangana Lakshmibai Jhansi", "Jhansi", "Uttar Pradesh", "North Central"],
+  ["JU", "Jodhpur Junction", "Jodhpur", "Rajasthan", "North Western"],
+  ["KCG", "Kacheguda", "Hyderabad", "Telangana", "South Central"],
+  ["KGP", "Kharagpur Junction", "Kharagpur", "West Bengal", "South Eastern"],
+  ["KIR", "Katihar Junction", "Katihar", "Bihar", "Northeast Frontier"],
+  ["KJM", "Krishnarajapuram", "Bengaluru", "Karnataka", "South Western"],
+  ["KOTA", "Kota Junction", "Kota", "Rajasthan", "West Central"],
+  ["KPD", "Katpadi Junction", "Vellore", "Tamil Nadu", "Southern"],
+  ["KTE", "Katni Junction", "Katni", "Madhya Pradesh", "West Central"],
+  ["KYQ", "Kamakhya", "Guwahati", "Assam", "Northeast Frontier"],
+  ["LJN", "Lucknow Junction", "Lucknow", "Uttar Pradesh", "North Eastern"],
+  ["LKO", "Lucknow Charbagh", "Lucknow", "Uttar Pradesh", "Northern"],
+  ["MAO", "Madgaon Junction", "Margao", "Goa", "Konkan"],
+  ["MAS", "MGR Chennai Central", "Chennai", "Tamil Nadu", "Southern"],
+  ["MB", "Moradabad", "Moradabad", "Uttar Pradesh", "Northern"],
+  ["MDU", "Madurai Junction", "Madurai", "Tamil Nadu", "Southern"],
+  ["MFP", "Muzaffarpur Junction", "Muzaffarpur", "Bihar", "East Central"],
+  ["MGS", "Pt Deen Dayal Upadhyaya Junction", "Chandauli", "Uttar Pradesh", "East Central"],
+  ["MMCT", "Mumbai Central", "Mumbai", "Maharashtra", "Western"],
+  ["MYS", "Mysuru Junction", "Mysuru", "Karnataka", "South Western"],
+  ["NDLS", "New Delhi", "Delhi", "Delhi", "Northern"],
+  ["NGP", "Nagpur Junction", "Nagpur", "Maharashtra", "Central"],
+  ["NJP", "New Jalpaiguri", "Siliguri", "West Bengal", "Northeast Frontier"],
+  ["NZM", "Hazrat Nizamuddin", "Delhi", "Delhi", "Northern"],
+  ["PBE", "Pilibhit Junction", "Pilibhit", "Uttar Pradesh", "North Eastern"],
+  ["PGT", "Palakkad Junction", "Palakkad", "Kerala", "Southern"],
+  ["PNBE", "Patna Junction", "Patna", "Bihar", "East Central"],
+  ["PUNE", "Pune Junction", "Pune", "Maharashtra", "Central"],
+  ["PURI", "Puri", "Puri", "Odisha", "East Coast"],
+  ["R", "Raipur Junction", "Raipur", "Chhattisgarh", "South East Central"],
+  ["RBL", "Rae Bareli Junction", "Rae Bareli", "Uttar Pradesh", "Northern"],
+  ["RJPB", "Rajendra Nagar Terminal", "Patna", "Bihar", "East Central"],
+  ["RJT", "Rajkot Junction", "Rajkot", "Gujarat", "Western"],
+  ["RKMP", "Rani Kamlapati", "Bhopal", "Madhya Pradesh", "West Central"],
+  ["ROU", "Rourkela", "Rourkela", "Odisha", "South Eastern"],
+  ["SBC", "KSR Bengaluru", "Bengaluru", "Karnataka", "South Western"],
+  ["SC", "Secunderabad Junction", "Hyderabad", "Telangana", "South Central"],
+  ["SDAH", "Sealdah", "Kolkata", "West Bengal", "Eastern"],
+  ["SGNR", "Shri Ganganagar", "Shri Ganganagar", "Rajasthan", "North Western"],
+  ["SHTT", "Silchar", "Silchar", "Assam", "Northeast Frontier"],
+  ["SMVB", "Sir M. Visvesvaraya Terminal Bengaluru", "Bengaluru", "Karnataka", "South Western"],
+  ["ST", "Surat", "Surat", "Gujarat", "Western"],
+  ["TATA", "Tatanagar Junction", "Jamshedpur", "Jharkhand", "South Eastern"],
+  ["TCR", "Thrissur", "Thrissur", "Kerala", "Southern"],
+  ["TEN", "Tirunelveli Junction", "Tirunelveli", "Tamil Nadu", "Southern"],
+  ["TPTY", "Tirupati", "Tirupati", "Andhra Pradesh", "South Central"],
+  ["TVC", "Thiruvananthapuram Central", "Thiruvananthapuram", "Kerala", "Southern"],
+  ["UDZ", "Udaipur City", "Udaipur", "Rajasthan", "North Western"],
+  ["UMB", "Ambala Cantt", "Ambala", "Haryana", "Northern"],
+  ["VGLJ", "Virangana Lakshmibai Jhansi", "Jhansi", "Uttar Pradesh", "North Central"],
+  ["VSKP", "Visakhapatnam", "Visakhapatnam", "Andhra Pradesh", "East Coast"],
+  ["YPR", "Yesvantpur Junction", "Bengaluru", "Karnataka", "South Western"]
+];
+
+function station({ code, name, city, state, congestionScore, platforms, zone, aliases = [] }) {
   return {
     id: `station-${code.toLowerCase()}`,
     code,
     name,
     city,
     state,
+    zone,
+    aliases,
     congestionScore,
     platforms,
     areas: [],
@@ -243,6 +361,21 @@ export function createSeedData(now = new Date()) {
     station({ code: "TVC", name: "Thiruvananthapuram Central", city: "Thiruvananthapuram", state: "Kerala", congestionScore: 0.38, platforms: ["1", "2", "3", "4", "5"] })
   ];
 
+  const existingStationCodes = new Set(stations.map((item) => item.code));
+  for (const [code, name, city, stateName, zone] of ALL_INDIA_STATION_CATALOG) {
+    if (existingStationCodes.has(code)) continue;
+    stations.push(station({
+      code,
+      name,
+      city,
+      state: stateName,
+      zone,
+      congestionScore: 0.36,
+      platforms: ["1", "2", "3", "4"]
+    }));
+    existingStationCodes.add(code);
+  }
+
   const trains = [
     train({ trainNumber: "12952", name: "Mumbai Central Tejas Rajdhani Express", serviceType: "Rajdhani", origin: "NDLS", destination: "MMCT" }),
     train({ trainNumber: "12951", name: "Mumbai Central Tejas Rajdhani Express", serviceType: "Rajdhani", origin: "MMCT", destination: "NDLS" }),
@@ -325,6 +458,8 @@ export function createSeedData(now = new Date()) {
   ];
 
   const users = [];
+  const accounts = [];
+  const sessions = [];
   const trips = [];
   const alerts = [];
   const bookings = [];
@@ -368,6 +503,8 @@ export function createSeedData(now = new Date()) {
     trainRuns,
     trainRunStops,
     users,
+    accounts,
+    sessions,
     trips,
     bookings,
     bookingInventory,

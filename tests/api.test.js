@@ -56,6 +56,41 @@ test("search covers long-distance India corridors", async () => {
   assert.equal(result.payload.offers[0].toStationCode, "MAS");
 });
 
+test("station suggestions cover national station search", async () => {
+  await callApi("/api/reset-data", { method: "POST" });
+  const result = await callApi("/api/stations/search?q=varanasi");
+
+  assert.equal(result.statusCode, 200);
+  assert.ok(result.payload.stations.some((station) => station.code === "BSB"));
+});
+
+test("live train tracking returns platform and delay metadata", async () => {
+  await callApi("/api/reset-data", { method: "POST" });
+  const result = await callApi("/api/trains/12952/live");
+
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.payload.train.trainNumber, "12952");
+  assert.equal(result.payload.train.currentPlatform, "8");
+  assert.equal(result.payload.train.platformChanged, true);
+});
+
+test("passenger account signup creates an authenticated session", async () => {
+  await callApi("/api/reset-data", { method: "POST" });
+  const result = await callApi("/api/auth/signup", {
+    method: "POST",
+    body: {
+      name: "Passenger",
+      email: "passenger@example.com",
+      mobile: "9999999999",
+      password: "secret1"
+    }
+  });
+
+  assert.equal(result.statusCode, 201);
+  assert.equal(result.payload.account.email, "passenger@example.com");
+  assert.match(result.payload.token, /^[0-9a-f-]+$/);
+});
+
 test("booking creates pnr, ticket, active trip, and platform-change alert", async () => {
   await callApi("/api/reset-data", { method: "POST" });
   const result = await callApi("/api/bookings", {

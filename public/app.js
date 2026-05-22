@@ -1,13 +1,20 @@
 const state = {
   bootstrap: null,
+  account: null,
+  token: window.localStorage.getItem("railwayToken") || "",
   selectedTripId: null,
   currentOffers: [],
   selectedOfferId: null,
+  liveTrains: [],
   toastTimer: null
 };
 
 const els = {
   connectionStatus: document.querySelector("#connectionStatus"),
+  userChip: document.querySelector("#userChip"),
+  authPanel: document.querySelector("#authPanel"),
+  signupForm: document.querySelector("#signupForm"),
+  loginForm: document.querySelector("#loginForm"),
   resetDataButton: document.querySelector("#resetDataButton"),
   searchForm: document.querySelector("#searchForm"),
   swapRouteButton: document.querySelector("#swapRouteButton"),
@@ -18,6 +25,7 @@ const els = {
   addTripForm: document.querySelector("#addTripForm"),
   boardingStationSelect: document.querySelector("#boardingStationSelect"),
   destinationStationSelect: document.querySelector("#destinationStationSelect"),
+  stationSuggestions: document.querySelector("#stationSuggestions"),
   bookingClassSelect: document.querySelector("#bookingClassSelect"),
   quotaSelect: document.querySelector("#quotaSelect"),
   serviceDateInput: document.querySelector("#serviceDateInput"),
@@ -44,6 +52,10 @@ const els = {
   pnrForm: document.querySelector("#pnrForm"),
   pnrInput: document.querySelector("#pnrInput"),
   pnrStatus: document.querySelector("#pnrStatus"),
+  liveTrainForm: document.querySelector("#liveTrainForm"),
+  liveTrainInput: document.querySelector("#liveTrainInput"),
+  liveTrainStatus: document.querySelector("#liveTrainStatus"),
+  liveTrainResults: document.querySelector("#liveTrainResults"),
   crowdForm: document.querySelector("#crowdForm"),
   crowdPlatform: document.querySelector("#crowdPlatform"),
   opsForm: document.querySelector("#opsForm"),
@@ -122,6 +134,7 @@ async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: {
       "Content-Type": "application/json",
+      ...(state.token ? { Authorization: `Bearer ${state.token}` } : {}),
       ...(options.headers || {})
     },
     ...options
@@ -138,15 +151,58 @@ function stationName(code) {
   return station ? `${station.code} ${station.name}` : code;
 }
 
+function stationLabel(station) {
+  return `${station.code} - ${station.name}, ${station.city}`;
+}
+
+function stationValue(code) {
+  const station = state.bootstrap?.stations.find((item) => item.code === code);
+  return station ? stationLabel(station) : code;
+}
+
+function resolveStationCode(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const explicitCode = raw.split(/[\s-]/)[0]?.toUpperCase();
+  const match = state.bootstrap?.stations.find((station) => (
+    station.code === explicitCode ||
+    station.code === raw.toUpperCase() ||
+    station.name.toLowerCase() === raw.toLowerCase() ||
+    `${station.code} - ${station.name}, ${station.city}`.toLowerCase() === raw.toLowerCase()
+  ));
+  return match?.code ?? explicitCode;
+}
+
 function selectedOffer() {
   return state.currentOffers.find((offer) => offer.id === state.selectedOfferId) ?? state.currentOffers[0] ?? null;
 }
 
 async function refresh() {
   state.bootstrap = await api("/api/bootstrap");
+  if (state.token && !state.account) {
+    try {
+      const result = await api("/api/auth/me");
+      state.account = result.account;
+      if (!state.account) {
+        state.token = "";
+        window.localStorage.removeItem("railwayToken");
+      }
+    } catch {
+      state.token = "";
+      window.localStorage.removeItem("railwayToken");
+    }
+  }
   if (!state.currentOffers.length) {
     state.currentOffers = state.bootstrap.bookingOffers ?? [];
     state.selectedOfferId = state.currentOffers[0]?.id ?? null;
+  }
+  if (!state.liveTrains.length) {
+    try {
+      const live = await api("/api/trains/live?q=");
+      state.liveTrains = live.trains.slice(0, 5);
+    } catch {
+      state.liveTrains = [];
+    }
   }
   if (!state.selectedTripId || !state.bootstrap.tripCards.some((card) => card.trip.id === state.selectedTripId)) {
     state.selectedTripId = state.bootstrap.tripCards[0]?.trip.id ?? null;
@@ -160,18 +216,17 @@ function selectedCard() {
 
 function renderSelects() {
   if (!state.bootstrap) return;
-  const previousFrom = els.boardingStationSelect.value || "NDLS";
-  const previousTo = els.destinationStationSelect.value || "MMCT";
-  const stationCodes = new Set(state.bootstrap.stations.map((station) => station.code));
-  const stationOptions = state.bootstrap.stations.map((station) => (
-    `<option value="${station.code}">${station.code} - ${escapeHtml(station.name)}</option>`
-  )).join("");
-
-  els.boardingStationSelect.innerHTML = stationOptions;
-  els.destinationStationSelect.innerHTML = stationOptions;
-  els.boardingStationSelect.value = stationCodes.has(previousFrom) ? previousFrom : "NDLS";
-  const safeTo = stationCodes.has(previousTo) ? previousTo : "MMCT";
-  els.destinationStationSelect.value = safeTo === els.boardingStationSelect.value ? "MMCT" : safeTo;
+  if (!els.stationSuggestions.childElementCount) {
+    els.stationSuggestions.innerHTML = state.bootstrap.stations.map((station) => (
+      `<option value="${escapeHtml(stationLabel(station))}">${escapeHtml(station.state)} - ${escapeHtml(station.zone || "Indian Railways")}</option>`
+    )).join("");
+  }
+  if (!els.boardingStationSelect.value) {
+    els.boardingStationSelect.value = stationValue("NDLS");
+  }
+  if (!els.destinationStationSelect.value) {
+    els.destinationStationSelect.value = stationValue("MMCT");
+  }
 
   if (!els.serviceDateInput.value) {
     els.serviceDateInput.value = todayInIndia();
@@ -185,7 +240,7 @@ function renderBookingOffers(offers) {
   }
 
   els.resultCount.textContent = offers.length === 1 ? "1 train" : `${offers.length} trains`;
-  els.selectedRouteLabel.textContent = `${els.boardingStationSelect.value} to ${els.destinationStationSelect.value}`;
+  els.selectedRouteLabel.textContent = `${resolveStationCode(els.boardingStationSelect.value)} to ${resolveStationCode(els.destinationStationSelect.value)}`;
 
   els.bookingOffers.innerHTML = offers.length ? offers.map((offer) => {
     const selected = offer.id === state.selectedOfferId;
@@ -232,7 +287,7 @@ function renderBookingOffers(offers) {
 function renderSelectedOfferSummary() {
   const offer = selectedOffer();
   const submitButton = els.addTripForm.querySelector("button[type='submit']");
-  submitButton.disabled = !offer;
+  submitButton.disabled = !offer || !state.account;
 
   if (!offer) {
     els.checkoutStatus.textContent = "Select train";
@@ -243,7 +298,7 @@ function renderSelectedOfferSummary() {
     return;
   }
 
-  els.checkoutStatus.textContent = offer.status;
+  els.checkoutStatus.textContent = state.account ? offer.status : "Sign in";
   const delayMinutes = Math.round(Number(offer.delaySeconds || 0) / 60);
   els.selectedOfferSummary.innerHTML = `
     <div>
@@ -259,6 +314,56 @@ function renderSelectedOfferSummary() {
       <div><dt>Total</dt><dd>${formatMoney(offer.fare, offer.currency)}</dd></div>
     </dl>
   `;
+}
+
+function renderAuth() {
+  const signedIn = Boolean(state.account);
+  els.authPanel.classList.toggle("signed-in", signedIn);
+  els.userChip.textContent = signedIn ? state.account.name : "Guest";
+  if (signedIn) {
+    els.authPanel.innerHTML = `
+      <div>
+        <p class="eyebrow">Passenger Account</p>
+        <h2>${escapeHtml(state.account.name)}</h2>
+        <small>${escapeHtml(state.account.email)} ${state.account.mobile ? `- ${escapeHtml(state.account.mobile)}` : ""}</small>
+      </div>
+      <button class="ghost-button" id="signOutButton" type="button">Sign Out</button>
+    `;
+    document.querySelector("#signOutButton").addEventListener("click", () => {
+      state.account = null;
+      state.token = "";
+      window.localStorage.removeItem("railwayToken");
+      window.location.reload();
+    });
+  }
+}
+
+function renderLiveTrains() {
+  const trains = state.liveTrains.length
+    ? state.liveTrains
+    : (state.bootstrap?.trains || []).slice(0, 5).map((train) => ({
+      trainNumber: train.trainNumber,
+      trainName: train.name,
+      serviceType: train.serviceType,
+      status: "scheduled",
+      delaySeconds: 0,
+      currentPlatform: null,
+      message: `${train.trainNumber} ${train.name}`
+    }));
+
+  els.liveTrainStatus.textContent = `${state.bootstrap?.metrics?.liveTrains ?? trains.length} tracked`;
+  els.liveTrainResults.innerHTML = trains.map((train) => {
+    const delayMinutes = Math.round(Number(train.delaySeconds || 0) / 60);
+    const changed = train.platformChanged ? "changed" : "confirmed";
+    return `
+      <div class="live-train-card">
+        <strong>${train.trainNumber} ${escapeHtml(train.trainName)}</strong>
+        <small>${escapeHtml(train.serviceType || "Train")} - ${escapeHtml(train.status || "scheduled")} - ${delayMinutes ? `${delayMinutes} min delay` : "on time"}</small>
+        <span class="status-pill">Platform ${train.currentPlatform || "pending"} ${train.currentPlatform ? changed : ""}</span>
+        <small>${escapeHtml(train.message || "")}</small>
+      </div>
+    `;
+  }).join("");
 }
 
 function renderTrips() {
@@ -410,9 +515,11 @@ function renderOps() {
 
 function render() {
   if (!state.bootstrap) return;
+  renderAuth();
   renderSelects();
   renderBookingOffers(state.currentOffers.length ? state.currentOffers : state.bootstrap.bookingOffers ?? []);
   renderTrips();
+  renderLiveTrains();
   renderOps();
 
   const card = selectedCard();
@@ -429,8 +536,8 @@ function render() {
 
 async function refreshBookingOffers() {
   const params = new URLSearchParams({
-    from: els.boardingStationSelect.value,
-    to: els.destinationStationSelect.value,
+    from: resolveStationCode(els.boardingStationSelect.value),
+    to: resolveStationCode(els.destinationStationSelect.value),
     classCode: els.bookingClassSelect.value,
     date: els.serviceDateInput.value
   });
@@ -441,6 +548,40 @@ async function refreshBookingOffers() {
 }
 
 function setupEvents() {
+  els.signupForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const result = await api("/api/auth/signup", {
+        method: "POST",
+        body: JSON.stringify(Object.fromEntries(new FormData(els.signupForm)))
+      });
+      state.account = result.account;
+      state.token = result.token;
+      window.localStorage.setItem("railwayToken", result.token);
+      render();
+      showToast("Account created. You can book now.");
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+
+  els.loginForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      const result = await api("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify(Object.fromEntries(new FormData(els.loginForm)))
+      });
+      state.account = result.account;
+      state.token = result.token;
+      window.localStorage.setItem("railwayToken", result.token);
+      render();
+      showToast("Signed in.");
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+
   els.searchForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
@@ -456,6 +597,19 @@ function setupEvents() {
     els.destinationStationSelect.value = from;
     try {
       await refreshBookingOffers();
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+
+  els.liveTrainForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const query = new FormData(els.liveTrainForm).get("trainQuery") || "";
+    try {
+      const result = await api(`/api/trains/live?q=${encodeURIComponent(query)}`);
+      state.liveTrains = result.trains;
+      renderLiveTrains();
+      showToast(result.trains.length ? "Live train status updated" : "No live train found");
     } catch (error) {
       showToast(error.message);
     }
@@ -481,12 +635,17 @@ function setupEvents() {
       showToast("Select a train before booking");
       return;
     }
+    if (!state.account) {
+      showToast("Create an account or sign in before booking");
+      els.authPanel.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
 
     const body = {
       ...Object.fromEntries(new FormData(els.addTripForm)),
       offerId: offer.id,
-      boardingStationCode: els.boardingStationSelect.value,
-      destinationStationCode: els.destinationStationSelect.value,
+      boardingStationCode: resolveStationCode(els.boardingStationSelect.value),
+      destinationStationCode: resolveStationCode(els.destinationStationSelect.value),
       classCode: els.bookingClassSelect.value,
       serviceDate: els.serviceDateInput.value,
       quota: els.quotaSelect.value
@@ -602,6 +761,7 @@ function setupEvents() {
       await api("/api/reset-data", { method: "POST" });
       state.selectedTripId = null;
       state.currentOffers = [];
+      state.liveTrains = [];
       state.selectedOfferId = null;
       els.pnrStatus.textContent = "Ready";
       await refresh();

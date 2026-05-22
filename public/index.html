@@ -14,10 +14,30 @@
           <h1>Book trains with live platform tracking</h1>
         </div>
         <div class="topbar-actions">
+          <span class="user-chip" id="userChip">Guest</span>
           <span class="live-indicator" id="connectionStatus">Connecting</span>
           <button class="ghost-button" id="resetDataButton" type="button">Reset</button>
         </div>
       </header>
+
+      <section class="rail-panel auth-panel" id="authPanel">
+        <div>
+          <p class="eyebrow">Passenger Account</p>
+          <h2>Sign in before final booking</h2>
+        </div>
+        <form id="signupForm" class="auth-form">
+          <input name="name" autocomplete="name" placeholder="Full name" required>
+          <input name="email" type="email" autocomplete="email" placeholder="Email" required>
+          <input name="mobile" inputmode="tel" autocomplete="tel" placeholder="Mobile">
+          <input name="password" type="password" autocomplete="new-password" placeholder="Create password" minlength="6" required>
+          <button class="primary-button" type="submit">Create Account</button>
+        </form>
+        <form id="loginForm" class="auth-form">
+          <input name="email" type="email" autocomplete="email" placeholder="Email" required>
+          <input name="password" type="password" autocomplete="current-password" placeholder="Password" minlength="6" required>
+          <button class="ghost-button" type="submit">Sign In</button>
+        </form>
+      </section>
 
       <main class="booking-layout">
         <section class="search-column">
@@ -30,12 +50,12 @@
             <div class="route-grid">
               <label>
                 From
-                <select id="boardingStationSelect" name="boardingStationCode"></select>
+                <input id="boardingStationSelect" name="boardingStationCode" list="stationSuggestions" autocomplete="off" placeholder="Type station or city" required>
               </label>
               <button class="swap-button" id="swapRouteButton" type="button" aria-label="Swap route">Swap</button>
               <label>
                 To
-                <select id="destinationStationSelect" name="destinationStationCode"></select>
+                <input id="destinationStationSelect" name="destinationStationCode" list="stationSuggestions" autocomplete="off" placeholder="Type station or city" required>
               </label>
             </div>
 
@@ -81,6 +101,18 @@
               <span id="activeTripCount">0 active</span>
             </div>
             <div id="tripList" class="trip-list"></div>
+          </section>
+
+          <section class="rail-panel live-train-panel">
+            <div class="panel-heading">
+              <h2>Live Train Tracking</h2>
+              <span id="liveTrainStatus">24 tracked</span>
+            </div>
+            <form id="liveTrainForm" class="pnr-form">
+              <input id="liveTrainInput" name="trainQuery" inputmode="numeric" autocomplete="off" placeholder="Train no. or name">
+              <button class="ghost-button" type="submit">Track</button>
+            </form>
+            <div id="liveTrainResults" class="live-train-results"></div>
           </section>
         </section>
 
@@ -314,6 +346,7 @@
       </main>
     </div>
 
+    <datalist id="stationSuggestions"></datalist>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
     <script type="module" src="/app.js"></script>
   </body>
