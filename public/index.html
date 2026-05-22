@@ -48,15 +48,17 @@
             </div>
 
             <div class="route-grid">
-              <label>
-                From
+              <div class="station-field">
+                <label for="boardingStationSelect">From</label>
                 <input id="boardingStationSelect" name="boardingStationCode" list="stationSuggestions" autocomplete="off" placeholder="Type station or city" required>
-              </label>
+                <div class="station-suggestions" id="fromStationSuggestions" role="listbox" aria-label="From station suggestions"></div>
+              </div>
               <button class="swap-button" id="swapRouteButton" type="button" aria-label="Swap route">Swap</button>
-              <label>
-                To
+              <div class="station-field">
+                <label for="destinationStationSelect">To</label>
                 <input id="destinationStationSelect" name="destinationStationCode" list="stationSuggestions" autocomplete="off" placeholder="Type station or city" required>
-              </label>
+                <div class="station-suggestions" id="toStationSuggestions" role="listbox" aria-label="To station suggestions"></div>
+              </div>
             </div>
 
             <div class="search-grid">

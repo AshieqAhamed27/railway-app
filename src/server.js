@@ -130,23 +130,28 @@ function findStop(trainNumber, stationCode) {
 
 function searchStations(query, limit = 15) {
   const q = String(query || "").trim().toLowerCase();
+  const compactQuery = q.replace(/[^a-z0-9]/g, "");
+  const safeLimit = Math.min(Math.max(Number(limit) || 15, 1), 50);
   const ranked = state.stations
     .map((station) => {
       const code = station.code.toLowerCase();
       const name = station.name.toLowerCase();
       const city = station.city.toLowerCase();
       const haystack = `${code} ${name} ${city} ${station.state.toLowerCase()} ${(station.aliases || []).join(" ").toLowerCase()}`;
+      const compactHaystack = haystack.replace(/[^a-z0-9]/g, "");
       let score = 0;
       if (!q) score = 1;
       else if (code === q) score = 100;
       else if (code.startsWith(q)) score = 90;
+      else if (name === q || city === q) score = 85;
       else if (name.startsWith(q) || city.startsWith(q)) score = 75;
       else if (haystack.includes(q)) score = 45;
+      else if (compactQuery.length >= 3 && compactHaystack.includes(compactQuery)) score = 35;
       return { station, score };
     })
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score || a.station.name.localeCompare(b.station.name))
-    .slice(0, limit)
+    .slice(0, safeLimit)
     .map((item) => item.station);
   return ranked;
 }
@@ -615,7 +620,7 @@ function buildBootstrap() {
   const tripCards = state.trips.filter((trip) => trip.status === "active").map(buildTripCard);
   return {
     generatedAt: new Date().toISOString(),
-    stations: state.stations,
+    stations: state.stations.map(stationSummary),
     trains: state.trains,
     bookingOffers: searchBookingOffers({
       state,
@@ -678,8 +683,11 @@ export async function handleApi(request, response) {
   }
 
   if (method === "GET" && requestUrl.pathname === "/api/stations/search") {
-    const stations = searchStations(requestUrl.searchParams.get("q"), Number(requestUrl.searchParams.get("limit") || 20));
-    sendJson(response, 200, { stations });
+    const stations = searchStations(
+      requestUrl.searchParams.get("q"),
+      Number(requestUrl.searchParams.get("limit") || 20)
+    ).map(stationSummary);
+    sendJson(response, 200, { stations, total: stations.length });
     return;
   }
 

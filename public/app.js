@@ -6,6 +6,7 @@ const state = {
   currentOffers: [],
   selectedOfferId: null,
   liveTrains: [],
+  stationSuggestionTimers: new Map(),
   toastTimer: null
 };
 
@@ -26,6 +27,8 @@ const els = {
   boardingStationSelect: document.querySelector("#boardingStationSelect"),
   destinationStationSelect: document.querySelector("#destinationStationSelect"),
   stationSuggestions: document.querySelector("#stationSuggestions"),
+  fromStationSuggestions: document.querySelector("#fromStationSuggestions"),
+  toStationSuggestions: document.querySelector("#toStationSuggestions"),
   bookingClassSelect: document.querySelector("#bookingClassSelect"),
   quotaSelect: document.querySelector("#quotaSelect"),
   serviceDateInput: document.querySelector("#serviceDateInput"),
@@ -155,22 +158,55 @@ function stationLabel(station) {
   return `${station.code} - ${station.name}, ${station.city}`;
 }
 
+function stationMeta(station) {
+  return `${station.state}${station.zone ? ` - ${station.zone}` : ""}`;
+}
+
 function stationValue(code) {
   const station = state.bootstrap?.stations.find((item) => item.code === code);
   return station ? stationLabel(station) : code;
 }
 
+function localStationMatches(query, limit = 8) {
+  const q = String(query || "").trim().toLowerCase();
+  const compactQuery = q.replace(/[^a-z0-9]/g, "");
+  return (state.bootstrap?.stations ?? [])
+    .map((station) => {
+      const code = station.code.toLowerCase();
+      const name = station.name.toLowerCase();
+      const city = station.city.toLowerCase();
+      const haystack = `${code} ${name} ${city} ${station.state.toLowerCase()} ${(station.zone || "").toLowerCase()}`;
+      const compactHaystack = haystack.replace(/[^a-z0-9]/g, "");
+      let score = 0;
+      if (!q) score = 1;
+      else if (code === q) score = 100;
+      else if (code.startsWith(q)) score = 90;
+      else if (name === q || city === q) score = 85;
+      else if (name.startsWith(q) || city.startsWith(q)) score = 75;
+      else if (haystack.includes(q)) score = 45;
+      else if (compactQuery.length >= 3 && compactHaystack.includes(compactQuery)) score = 35;
+      return { station, score };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.station.name.localeCompare(b.station.name))
+    .slice(0, limit)
+    .map((item) => item.station);
+}
+
 function resolveStationCode(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
-  const explicitCode = raw.split(/[\s-]/)[0]?.toUpperCase();
-  const match = state.bootstrap?.stations.find((station) => (
+  const rawLower = raw.toLowerCase();
+  const explicitCode = raw.match(/^[a-z0-9]+/i)?.[0]?.toUpperCase() || raw.toUpperCase();
+  const exactMatch = state.bootstrap?.stations.find((station) => (
     station.code === explicitCode ||
     station.code === raw.toUpperCase() ||
+    station.city.toLowerCase() === rawLower ||
     station.name.toLowerCase() === raw.toLowerCase() ||
-    `${station.code} - ${station.name}, ${station.city}`.toLowerCase() === raw.toLowerCase()
+    stationLabel(station).toLowerCase() === rawLower
   ));
-  return match?.code ?? explicitCode;
+  if (exactMatch) return exactMatch.code;
+  return localStationMatches(raw, 1)[0]?.code ?? explicitCode;
 }
 
 function selectedOffer() {
@@ -218,7 +254,7 @@ function renderSelects() {
   if (!state.bootstrap) return;
   if (!els.stationSuggestions.childElementCount) {
     els.stationSuggestions.innerHTML = state.bootstrap.stations.map((station) => (
-      `<option value="${escapeHtml(stationLabel(station))}">${escapeHtml(station.state)} - ${escapeHtml(station.zone || "Indian Railways")}</option>`
+      `<option value="${escapeHtml(stationLabel(station))}">${escapeHtml(stationMeta(station))}</option>`
     )).join("");
   }
   if (!els.boardingStationSelect.value) {
@@ -231,6 +267,70 @@ function renderSelects() {
   if (!els.serviceDateInput.value) {
     els.serviceDateInput.value = todayInIndia();
   }
+}
+
+function renderStationSuggestions(container, input, stations) {
+  if (!container) return;
+  if (!stations.length) {
+    container.innerHTML = `<div class="station-suggestion-empty">No station found</div>`;
+    container.classList.add("open");
+    return;
+  }
+
+  container.innerHTML = stations.map((station) => `
+    <button class="station-suggestion-button" type="button" role="option" data-station-code="${escapeHtml(station.code)}">
+      <strong>${escapeHtml(station.code)} ${escapeHtml(station.name)}</strong>
+      <small>${escapeHtml(station.city)} - ${escapeHtml(stationMeta(station))}</small>
+    </button>
+  `).join("");
+  container.classList.add("open");
+
+  container.querySelectorAll("[data-station-code]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const station = (state.bootstrap?.stations ?? []).find((item) => item.code === button.dataset.stationCode);
+      input.value = station ? stationLabel(station) : button.dataset.stationCode;
+      container.classList.remove("open");
+      container.innerHTML = "";
+    });
+  });
+}
+
+async function loadStationSuggestions(input, container) {
+  const query = input.value.trim();
+  if (!query) {
+    renderStationSuggestions(container, input, localStationMatches("", 6));
+    return;
+  }
+
+  container.dataset.query = query;
+  try {
+    const result = await api(`/api/stations/search?q=${encodeURIComponent(query)}&limit=8`);
+    if (container.dataset.query !== query) return;
+    renderStationSuggestions(container, input, result.stations ?? []);
+  } catch {
+    renderStationSuggestions(container, input, localStationMatches(query, 8));
+  }
+}
+
+function scheduleStationSuggestions(input, container, delay = 180) {
+  window.clearTimeout(state.stationSuggestionTimers.get(input));
+  state.stationSuggestionTimers.set(input, window.setTimeout(() => {
+    loadStationSuggestions(input, container);
+  }, delay));
+}
+
+function setupStationAutocomplete(input, container) {
+  if (!input || !container) return;
+  input.addEventListener("input", () => scheduleStationSuggestions(input, container));
+  input.addEventListener("focus", () => scheduleStationSuggestions(input, container, 0));
+  input.addEventListener("blur", () => {
+    const code = resolveStationCode(input.value);
+    const station = (state.bootstrap?.stations ?? []).find((item) => item.code === code);
+    if (station && input.value.trim().length > 1) {
+      input.value = stationLabel(station);
+    }
+    window.setTimeout(() => container.classList.remove("open"), 120);
+  });
 }
 
 function renderBookingOffers(offers) {
@@ -548,6 +648,16 @@ async function refreshBookingOffers() {
 }
 
 function setupEvents() {
+  setupStationAutocomplete(els.boardingStationSelect, els.fromStationSuggestions);
+  setupStationAutocomplete(els.destinationStationSelect, els.toStationSuggestions);
+
+  document.addEventListener("click", (event) => {
+    for (const container of [els.fromStationSuggestions, els.toStationSuggestions]) {
+      if (container?.parentElement?.contains(event.target)) continue;
+      container?.classList.remove("open");
+    }
+  });
+
   els.signupForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
