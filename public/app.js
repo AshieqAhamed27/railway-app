@@ -3,20 +3,27 @@ const state = {
   selectedTripId: null,
   currentOffers: [],
   selectedOfferId: null,
-  refreshTimer: null
+  toastTimer: null
 };
 
 const els = {
   connectionStatus: document.querySelector("#connectionStatus"),
   resetDataButton: document.querySelector("#resetDataButton"),
+  searchForm: document.querySelector("#searchForm"),
+  swapRouteButton: document.querySelector("#swapRouteButton"),
+  resultCount: document.querySelector("#resultCount"),
+  selectedRouteLabel: document.querySelector("#selectedRouteLabel"),
   activeTripCount: document.querySelector("#activeTripCount"),
   tripList: document.querySelector("#tripList"),
   addTripForm: document.querySelector("#addTripForm"),
   boardingStationSelect: document.querySelector("#boardingStationSelect"),
   destinationStationSelect: document.querySelector("#destinationStationSelect"),
   bookingClassSelect: document.querySelector("#bookingClassSelect"),
+  quotaSelect: document.querySelector("#quotaSelect"),
   serviceDateInput: document.querySelector("#serviceDateInput"),
   bookingOffers: document.querySelector("#bookingOffers"),
+  selectedOfferSummary: document.querySelector("#selectedOfferSummary"),
+  checkoutStatus: document.querySelector("#checkoutStatus"),
   heroTrain: document.querySelector("#heroTrain"),
   heroTitle: document.querySelector("#heroTitle"),
   heroAction: document.querySelector("#heroAction"),
@@ -36,6 +43,7 @@ const els = {
   alertCount: document.querySelector("#alertCount"),
   pnrForm: document.querySelector("#pnrForm"),
   pnrInput: document.querySelector("#pnrInput"),
+  pnrStatus: document.querySelector("#pnrStatus"),
   crowdForm: document.querySelector("#crowdForm"),
   crowdPlatform: document.querySelector("#crowdPlatform"),
   opsForm: document.querySelector("#opsForm"),
@@ -45,19 +53,47 @@ const els = {
   toast: document.querySelector("#toast")
 };
 
+const htmlEscapes = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#039;"
+};
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => htmlEscapes[char]);
+}
+
 function formatTime(iso) {
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("en-IN", {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(iso));
 }
 
 function formatAge(iso) {
+  if (!iso) return "just now";
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
   return `${Math.floor(minutes / 60)}h ago`;
+}
+
+function formatMoney(value, currency = "INR") {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0
+  }).format(Number(value || 0));
+}
+
+function formatDuration(hours) {
+  const totalMinutes = Math.round(Number(hours || 0) * 60);
+  const wholeHours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes ? `${wholeHours}h ${minutes}m` : `${wholeHours}h`;
 }
 
 function pct(value) {
@@ -79,7 +115,7 @@ function showToast(message) {
   els.toast.textContent = message;
   els.toast.classList.add("show");
   window.clearTimeout(state.toastTimer);
-  state.toastTimer = window.setTimeout(() => els.toast.classList.remove("show"), 2400);
+  state.toastTimer = window.setTimeout(() => els.toast.classList.remove("show"), 2600);
 }
 
 async function api(path, options = {}) {
@@ -97,10 +133,20 @@ async function api(path, options = {}) {
   return payload;
 }
 
+function stationName(code) {
+  const station = state.bootstrap?.stations.find((item) => item.code === code);
+  return station ? `${station.code} ${station.name}` : code;
+}
+
+function selectedOffer() {
+  return state.currentOffers.find((offer) => offer.id === state.selectedOfferId) ?? state.currentOffers[0] ?? null;
+}
+
 async function refresh() {
   state.bootstrap = await api("/api/bootstrap");
   if (!state.currentOffers.length) {
     state.currentOffers = state.bootstrap.bookingOffers ?? [];
+    state.selectedOfferId = state.currentOffers[0]?.id ?? null;
   }
   if (!state.selectedTripId || !state.bootstrap.tripCards.some((card) => card.trip.id === state.selectedTripId)) {
     state.selectedTripId = state.bootstrap.tripCards[0]?.trip.id ?? null;
@@ -118,17 +164,18 @@ function renderSelects() {
   const previousTo = els.destinationStationSelect.value || "MMCT";
   const stationCodes = new Set(state.bootstrap.stations.map((station) => station.code));
   const stationOptions = state.bootstrap.stations.map((station) => (
-    `<option value="${station.code}">${station.code} ${station.name}</option>`
+    `<option value="${station.code}">${station.code} - ${escapeHtml(station.name)}</option>`
   )).join("");
+
   els.boardingStationSelect.innerHTML = stationOptions;
   els.destinationStationSelect.innerHTML = stationOptions;
   els.boardingStationSelect.value = stationCodes.has(previousFrom) ? previousFrom : "NDLS";
   const safeTo = stationCodes.has(previousTo) ? previousTo : "MMCT";
   els.destinationStationSelect.value = safeTo === els.boardingStationSelect.value ? "MMCT" : safeTo;
+
   if (!els.serviceDateInput.value) {
     els.serviceDateInput.value = todayInIndia();
   }
-  renderBookingOffers(state.currentOffers.length ? state.currentOffers : state.bootstrap.bookingOffers ?? []);
 }
 
 function renderBookingOffers(offers) {
@@ -136,19 +183,82 @@ function renderBookingOffers(offers) {
   if (!offers.some((offer) => offer.id === state.selectedOfferId)) {
     state.selectedOfferId = offers[0]?.id ?? null;
   }
-  els.bookingOffers.innerHTML = offers.length ? offers.slice(0, 4).map((offer) => {
+
+  els.resultCount.textContent = offers.length === 1 ? "1 train" : `${offers.length} trains`;
+  els.selectedRouteLabel.textContent = `${els.boardingStationSelect.value} to ${els.destinationStationSelect.value}`;
+
+  els.bookingOffers.innerHTML = offers.length ? offers.map((offer) => {
     const selected = offer.id === state.selectedOfferId;
+    const delayMinutes = Math.round(Number(offer.delaySeconds || 0) / 60);
+    const platform = offer.platformNumber ? `Platform ${offer.platformNumber}` : "Platform pending";
     return `
-      <label class="offer-card ${selected ? "selected" : ""}" data-offer-id="${offer.id}">
+      <label class="train-card ${selected ? "selected" : ""}" data-offer-id="${offer.id}">
         <input type="radio" name="offerId" value="${offer.id}" ${selected ? "checked" : ""}>
-        <span>
-          <strong>${offer.trainNumber} ${offer.trainName}</strong>
-          <small>${offer.fromStationCode} to ${offer.toStationCode} - ${offer.classLabel} - ${offer.status}</small>
-          <small>INR ${offer.fare} - ${offer.availableSeats} seats - Departs ${formatTime(offer.departureAt)}</small>
+        <span class="train-card-main">
+          <span class="train-title">
+            <strong>${offer.trainNumber} ${escapeHtml(offer.trainName)}</strong>
+            <em>${escapeHtml(offer.serviceType || "Train")}</em>
+          </span>
+          <span class="journey-line">
+            <b>${formatTime(offer.departureAt)}</b>
+            <span>${offer.fromStationCode}</span>
+            <i></i>
+            <b>${formatTime(offer.arrivalAt)}</b>
+            <span>${offer.toStationCode}</span>
+          </span>
+          <span class="result-meta">
+            <small>${formatDuration(offer.journeyHours)}</small>
+            <small>${platform}</small>
+            <small>${delayMinutes ? `${delayMinutes} min delay` : "On time"}</small>
+          </span>
+        </span>
+        <span class="fare-block">
+          <strong>${formatMoney(offer.fare, offer.currency)}</strong>
+          <small>${escapeHtml(offer.classLabel)} - ${offer.availableSeats} seats</small>
+          <span class="status-pill">${escapeHtml(offer.status)}</span>
         </span>
       </label>
     `;
-  }).join("") : `<div class="offer-card"><strong>No seats found</strong><small>Change route, class, or date.</small></div>`;
+  }).join("") : `
+    <div class="empty-card">
+      <strong>No direct trains found</strong>
+      <small>Try a different route, travel class, or date.</small>
+    </div>
+  `;
+
+  renderSelectedOfferSummary();
+}
+
+function renderSelectedOfferSummary() {
+  const offer = selectedOffer();
+  const submitButton = els.addTripForm.querySelector("button[type='submit']");
+  submitButton.disabled = !offer;
+
+  if (!offer) {
+    els.checkoutStatus.textContent = "Select train";
+    els.selectedOfferSummary.innerHTML = `
+      <strong>No train selected</strong>
+      <small>Search a route and choose one available train to continue.</small>
+    `;
+    return;
+  }
+
+  els.checkoutStatus.textContent = offer.status;
+  const delayMinutes = Math.round(Number(offer.delaySeconds || 0) / 60);
+  els.selectedOfferSummary.innerHTML = `
+    <div>
+      <strong>${offer.trainNumber} ${escapeHtml(offer.trainName)}</strong>
+      <small>${stationName(offer.fromStationCode)} to ${stationName(offer.toStationCode)}</small>
+    </div>
+    <dl class="fare-summary">
+      <div><dt>Class</dt><dd>${escapeHtml(offer.classLabel)}</dd></div>
+      <div><dt>Departure</dt><dd>${formatTime(offer.departureAt)}</dd></div>
+      <div><dt>Seats</dt><dd>${offer.availableSeats}</dd></div>
+      <div><dt>Platform</dt><dd>${offer.platformNumber || "Pending"}</dd></div>
+      <div><dt>Delay</dt><dd>${delayMinutes ? `${delayMinutes} min` : "On time"}</dd></div>
+      <div><dt>Total</dt><dd>${formatMoney(offer.fare, offer.currency)}</dd></div>
+    </dl>
+  `;
 }
 
 function renderTrips() {
@@ -159,20 +269,25 @@ function renderTrips() {
     const severity = card.risk.severity;
     return `
       <button class="trip-button" type="button" data-trip-id="${card.trip.id}" aria-selected="${selected}">
-        <strong>${card.train.trainNumber} ${card.train.name}</strong>
-        <small>${card.trip.passengerName} - ${card.booking ? `PNR ${card.booking.pnr}` : "Trip"} - ${card.boardingStation.code} to ${card.trip.destinationStationCode}</small>
-        <span class="badge ${severity}">${severity.toUpperCase()} - Platform ${card.platformState.currentPlatform || "pending"}</span>
+        <span>
+          <strong>${card.train.trainNumber} ${escapeHtml(card.train.name)}</strong>
+          <small>${escapeHtml(card.trip.passengerName)} - ${card.booking ? `PNR ${card.booking.pnr}` : "Trip"}</small>
+        </span>
+        <span>
+          <small>${card.boardingStation.code} to ${card.trip.destinationStationCode}</small>
+          <span class="badge ${severity}">${severity.toUpperCase()} - Platform ${card.platformState.currentPlatform || "pending"}</span>
+        </span>
       </button>
     `;
-  }).join("") : `<div class="timeline-item"><strong>No active trips</strong><small>Book a ticket to start platform monitoring.</small></div>`;
+  }).join("") : `<div class="empty-card"><strong>No bookings yet</strong><small>Your confirmed train tickets will appear here.</small></div>`;
 }
 
 function renderEmptyState() {
   els.heroTrain.textContent = "No active journey";
-  els.heroTitle.textContent = "Book a ticket to monitor platform changes";
-  els.heroAction.textContent = "Search an India route, choose an available train, and confirm the booking to start platform-change tracking.";
+  els.heroTitle.textContent = "Your confirmed booking will appear here";
+  els.heroAction.textContent = "Book a train to start live platform-change alerts, walking margin, evidence, and PNR tracking.";
   els.currentPlatform.textContent = "--";
-  els.platformConfidence.textContent = "Waiting for journey";
+  els.platformConfidence.textContent = "Waiting for booking";
   els.riskBadge.textContent = "--";
   els.riskBadge.className = "badge";
   els.departureMetric.textContent = "--";
@@ -182,16 +297,15 @@ function renderEmptyState() {
   els.routeSummary.textContent = "--";
   els.stationMap.innerHTML = "";
   els.routeSteps.innerHTML = "";
-  els.timeline.innerHTML = `<div class="timeline-item"><strong>No evidence yet</strong><small>Evidence appears after a journey is added.</small></div>`;
+  els.timeline.innerHTML = `<div class="empty-card"><strong>No evidence yet</strong><small>Evidence appears after a booking is confirmed.</small></div>`;
   els.stateVersion.textContent = "v--";
   els.alertCount.textContent = "0";
-  els.alerts.innerHTML = `<div class="alert-item"><strong>No active alerts</strong><small>Alerts appear when a platform changes or risk increases.</small></div>`;
+  els.alerts.innerHTML = `<div class="empty-card"><strong>No active alerts</strong><small>Alerts appear when a platform changes or boarding risk increases.</small></div>`;
   els.crowdPlatform.value = "";
   els.opsPlatform.value = "";
 }
 
 function renderHero(card) {
-  if (!card) return;
   const platform = card.platformState;
   const risk = card.risk;
   const changed = platform.previousPlatform && platform.previousPlatform !== platform.currentPlatform;
@@ -229,7 +343,7 @@ function renderMap(card) {
     currentPlatform ? `platform-${currentPlatform}` : null
   ]);
 
-  if (!station.areas?.length) {
+  if (!station?.areas?.length) {
     els.stationMap.innerHTML = `<div class="map-node active" style="left:50%;top:50%">Platform ${currentPlatform || "pending"}</div>`;
     return;
   }
@@ -242,7 +356,7 @@ function renderMap(card) {
       area.id === card.trip.currentAreaId ? "current" : ""
     ].filter(Boolean).join(" ");
     const label = area.platformNumber ? `P${area.platformNumber}` : area.name;
-    return `<span class="${classes}" style="left:${area.x}%;top:${area.y}%">${label}</span>`;
+    return `<span class="${classes}" style="left:${area.x}%;top:${area.y}%">${escapeHtml(label)}</span>`;
   }).join("");
 
   els.stationMap.innerHTML = `<span class="route-line"></span>${nodes}`;
@@ -250,62 +364,57 @@ function renderMap(card) {
 
 function renderRoute(card) {
   els.routeSteps.innerHTML = card.route.steps.map((step) => (
-    `<li>${step.from} to ${step.to} - ${step.mode} - ${Math.ceil(step.expectedSeconds / 60)} min</li>`
+    `<li>${escapeHtml(step.from)} to ${escapeHtml(step.to)} - ${escapeHtml(step.mode)} - ${Math.ceil(step.expectedSeconds / 60)} min</li>`
   )).join("");
 }
 
 function renderTimeline(card) {
-  els.timeline.innerHTML = card.timeline.map((event) => `
+  els.timeline.innerHTML = card.timeline.length ? card.timeline.map((event) => `
     <div class="timeline-item">
-      <strong>${event.sourceName} - Platform ${event.platformNumber}</strong>
-      <small>${event.assignmentKind} - ${event.sourceKind.replaceAll("_", " ")} - ${pct(event.sourceConfidence)} - ${formatAge(event.observedAt)}</small>
-      <small>${event.summary || ""}</small>
+      <strong>${escapeHtml(event.sourceName)} - Platform ${escapeHtml(event.platformNumber)}</strong>
+      <small>${escapeHtml(event.assignmentKind)} - ${escapeHtml(event.sourceKind.replaceAll("_", " "))} - ${pct(event.sourceConfidence)} - ${formatAge(event.observedAt)}</small>
+      <small>${escapeHtml(event.summary || "")}</small>
     </div>
-  `).join("");
+  `).join("") : `<div class="empty-card"><strong>No evidence yet</strong><small>Waiting for platform signals.</small></div>`;
 }
 
 function renderAlerts(card) {
   els.alertCount.textContent = String(card.alerts.length);
   els.alerts.innerHTML = card.alerts.length ? card.alerts.map((alert) => `
     <div class="alert-item ${alert.severity}">
-      <strong>${alert.title}</strong>
+      <strong>${escapeHtml(alert.title)}</strong>
       ${alert.trainNumber ? `<small>Train ${alert.trainNumber} - ${alert.stationCode || card.boardingStation.code} - Platform ${alert.previousPlatform || card.platformState.plannedPlatform || "--"} to ${alert.currentPlatform || card.platformState.currentPlatform}</small>` : ""}
-      <small>${alert.body}</small>
+      <small>${escapeHtml(alert.body)}</small>
       <small>${formatAge(alert.createdAt)} - ${pct(alert.confidence)} confidence</small>
       ${alert.acknowledged ? "<small>Acknowledged</small>" : `<button class="alert-action" type="button" data-alert-id="${alert.id}">Acknowledge</button>`}
     </div>
-  `).join("") : `<div class="alert-item"><strong>No active alerts</strong><small>Realtime stream is connected.</small></div>`;
+  `).join("") : `<div class="empty-card"><strong>No active alerts</strong><small>Realtime stream is connected.</small></div>`;
 }
 
 function renderOps() {
-  const metrics = state.bootstrap?.metrics;
+  const metrics = state.bootstrap?.metrics ?? {
+    activeTrips: 0,
+    confirmedBookings: 0,
+    acceptedCrowdReports: 0,
+    openIncidents: 0
+  };
   const incidents = state.bootstrap?.incidents ?? [];
   els.opsHealth.textContent = incidents.length ? `${incidents.length} open` : "Healthy";
   els.opsMetrics.innerHTML = `
-    <div class="ops-metric">
-      <strong>${metrics.activeTrips}</strong>
-      <small>Active trips</small>
-    </div>
-    <div class="ops-metric">
-      <strong>${metrics.confirmedBookings}</strong>
-      <small>Confirmed bookings</small>
-    </div>
-    <div class="ops-metric">
-      <strong>${metrics.acceptedCrowdReports}</strong>
-      <small>Accepted crowd reports</small>
-    </div>
-    <div class="ops-metric">
-      <strong>${metrics.openIncidents}</strong>
-      <small>Open data incidents</small>
-    </div>
+    <div class="ops-metric"><strong>${metrics.activeTrips}</strong><small>Active trips</small></div>
+    <div class="ops-metric"><strong>${metrics.confirmedBookings}</strong><small>Bookings</small></div>
+    <div class="ops-metric"><strong>${metrics.acceptedCrowdReports}</strong><small>Crowd reports</small></div>
+    <div class="ops-metric"><strong>${metrics.openIncidents}</strong><small>Data incidents</small></div>
   `;
 }
 
 function render() {
   if (!state.bootstrap) return;
   renderSelects();
+  renderBookingOffers(state.currentOffers.length ? state.currentOffers : state.bootstrap.bookingOffers ?? []);
   renderTrips();
   renderOps();
+
   const card = selectedCard();
   if (!card) {
     renderEmptyState();
@@ -318,28 +427,35 @@ function render() {
   renderAlerts(card);
 }
 
+async function refreshBookingOffers() {
+  const params = new URLSearchParams({
+    from: els.boardingStationSelect.value,
+    to: els.destinationStationSelect.value,
+    classCode: els.bookingClassSelect.value,
+    date: els.serviceDateInput.value
+  });
+  const result = await api(`/api/booking/search?${params}`);
+  state.currentOffers = result.offers;
+  state.selectedOfferId = result.offers[0]?.id ?? null;
+  render();
+}
+
 function setupEvents() {
-  els.tripList.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-trip-id]");
-    if (!button) return;
-    state.selectedTripId = button.dataset.tripId;
-    render();
+  els.searchForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await refreshBookingOffers();
+    } catch (error) {
+      showToast(error.message);
+    }
   });
 
-  els.addTripForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const body = Object.fromEntries(new FormData(els.addTripForm));
-    if (!body.offerId && state.selectedOfferId) {
-      body.offerId = state.selectedOfferId;
-    }
+  els.swapRouteButton.addEventListener("click", async () => {
+    const from = els.boardingStationSelect.value;
+    els.boardingStationSelect.value = els.destinationStationSelect.value;
+    els.destinationStationSelect.value = from;
     try {
-      const result = await api("/api/bookings", {
-        method: "POST",
-        body: JSON.stringify(body)
-      });
-      state.selectedTripId = result.tripCard.trip.id;
-      await refresh();
-      showToast(`Booking confirmed: PNR ${result.booking.pnr}`);
+      await refreshBookingOffers();
     } catch (error) {
       showToast(error.message);
     }
@@ -351,30 +467,45 @@ function setupEvents() {
     renderBookingOffers(state.currentOffers);
   });
 
-  async function refreshBookingOffers() {
-    const params = new URLSearchParams({
-      from: els.boardingStationSelect.value,
-      to: els.destinationStationSelect.value,
+  els.tripList.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-trip-id]");
+    if (!button) return;
+    state.selectedTripId = button.dataset.tripId;
+    render();
+  });
+
+  els.addTripForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const offer = selectedOffer();
+    if (!offer) {
+      showToast("Select a train before booking");
+      return;
+    }
+
+    const body = {
+      ...Object.fromEntries(new FormData(els.addTripForm)),
+      offerId: offer.id,
+      boardingStationCode: els.boardingStationSelect.value,
+      destinationStationCode: els.destinationStationSelect.value,
       classCode: els.bookingClassSelect.value,
-      date: els.serviceDateInput.value
-    });
+      serviceDate: els.serviceDateInput.value,
+      quota: els.quotaSelect.value
+    };
+
     try {
-      const result = await api(`/api/booking/search?${params}`);
-      state.currentOffers = result.offers;
-      renderBookingOffers(result.offers);
+      const result = await api("/api/bookings", {
+        method: "POST",
+        body: JSON.stringify(body)
+      });
+      state.selectedTripId = result.tripCard.trip.id;
+      state.currentOffers = [];
+      await refresh();
+      els.pnrInput.value = result.booking.pnr;
+      showToast(`Booking confirmed: PNR ${result.booking.pnr}`);
     } catch (error) {
       showToast(error.message);
     }
-  }
-
-  for (const control of [
-    els.boardingStationSelect,
-    els.destinationStationSelect,
-    els.bookingClassSelect,
-    els.serviceDateInput
-  ]) {
-    control.addEventListener("change", refreshBookingOffers);
-  }
+  });
 
   els.pnrForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -390,8 +521,10 @@ function setupEvents() {
         state.selectedTripId = result.booking.tripId;
         render();
       }
+      els.pnrStatus.textContent = "Found";
       showToast(`Tracking PNR ${result.booking.pnr}`);
     } catch (error) {
+      els.pnrStatus.textContent = "Not found";
       showToast(error.message);
     }
   });
@@ -468,6 +601,9 @@ function setupEvents() {
     try {
       await api("/api/reset-data", { method: "POST" });
       state.selectedTripId = null;
+      state.currentOffers = [];
+      state.selectedOfferId = null;
+      els.pnrStatus.textContent = "Ready";
       await refresh();
       showToast("Data reset");
     } catch (error) {

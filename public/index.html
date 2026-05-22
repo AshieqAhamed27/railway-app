@@ -10,59 +10,40 @@
     <div class="app-shell">
       <header class="topbar">
         <div>
-          <p class="eyebrow">India Railway Intelligence</p>
-          <h1>Passenger Operations Console</h1>
+          <p class="eyebrow">India Railway Booking</p>
+          <h1>Book trains with live platform tracking</h1>
         </div>
         <div class="topbar-actions">
           <span class="live-indicator" id="connectionStatus">Connecting</span>
-          <button class="ghost-button" id="resetDataButton" type="button">Reset Data</button>
+          <button class="ghost-button" id="resetDataButton" type="button">Reset</button>
         </div>
       </header>
 
-      <main class="workspace">
-        <aside class="rail-panel trip-rail" aria-label="Active trips">
-          <div class="panel-heading">
-            <h2>Trips</h2>
-            <span id="activeTripCount">0 active</span>
-          </div>
-          <div id="tripList" class="trip-list"></div>
-
-          <form id="addTripForm" class="compact-form">
-            <h3>Book Ticket</h3>
-            <label>
-              Passenger
-              <input name="passengerName" autocomplete="off" required>
-            </label>
-            <div class="split-fields">
-              <label>
-                Age
-                <input name="age" type="number" min="1" max="120" value="30" required>
-              </label>
-              <label>
-                Gender
-                <select name="gender">
-                  <option value="not_specified">Not specified</option>
-                  <option value="female">Female</option>
-                  <option value="male">Male</option>
-                  <option value="other">Other</option>
-                </select>
-              </label>
+      <main class="booking-layout">
+        <section class="search-column">
+          <form id="searchForm" class="rail-panel search-panel">
+            <div class="panel-heading">
+              <h2>Search Trains</h2>
+              <span id="resultCount">Today</span>
             </div>
-            <label>
-              Mobile
-              <input name="mobile" inputmode="tel" autocomplete="tel">
-            </label>
-            <div class="split-fields">
+
+            <div class="route-grid">
               <label>
                 From
-                <select name="boardingStationCode" id="boardingStationSelect"></select>
+                <select id="boardingStationSelect" name="boardingStationCode"></select>
               </label>
+              <button class="swap-button" id="swapRouteButton" type="button" aria-label="Swap route">Swap</button>
               <label>
                 To
-                <select name="destinationStationCode" id="destinationStationSelect"></select>
+                <select id="destinationStationSelect" name="destinationStationCode"></select>
               </label>
             </div>
-            <div class="split-fields">
+
+            <div class="search-grid">
+              <label>
+                Date
+                <input name="serviceDate" id="serviceDateInput" type="date" required>
+              </label>
               <label>
                 Class
                 <select name="classCode" id="bookingClassSelect">
@@ -74,44 +55,140 @@
                 </select>
               </label>
               <label>
-                Berth
-                <select name="berthPreference">
-                  <option value="no_preference">No preference</option>
-                  <option value="lb">Lower</option>
-                  <option value="mb">Middle</option>
-                  <option value="ub">Upper</option>
-                  <option value="sl">Side lower</option>
-                  <option value="su">Side upper</option>
+                Quota
+                <select name="quota" id="quotaSelect">
+                  <option value="GN">General</option>
+                  <option value="LD">Ladies</option>
+                  <option value="TQ">Tatkal</option>
+                  <option value="SS">Senior citizen</option>
                 </select>
               </label>
+              <button class="primary-button" type="submit">Search</button>
             </div>
-            <div class="split-fields">
-              <label>
-                Mobility
-                <select name="mobilityProfile">
-                  <option value="standard">Standard</option>
-                  <option value="luggage">Luggage</option>
-                  <option value="senior">Senior</option>
-                  <option value="wheelchair">Wheelchair</option>
-                  <option value="family">Family</option>
-                </select>
-              </label>
-              <label>
-                Date
-                <input name="serviceDate" id="serviceDateInput" type="date" required>
-              </label>
-            </div>
-            <div id="bookingOffers" class="offer-list"></div>
-            <button class="primary-button" type="submit">Confirm Booking</button>
           </form>
+
+          <section class="rail-panel results-panel">
+            <div class="panel-heading">
+              <h2>Available Trains</h2>
+              <span id="selectedRouteLabel">NDLS to MMCT</span>
+            </div>
+            <div id="bookingOffers" class="train-results"></div>
+          </section>
+
+          <section class="rail-panel trip-rail" aria-label="Booked journeys">
+            <div class="panel-heading">
+              <h2>My Journeys</h2>
+              <span id="activeTripCount">0 active</span>
+            </div>
+            <div id="tripList" class="trip-list"></div>
+          </section>
+        </section>
+
+        <aside class="checkout-column">
+          <section class="rail-panel checkout-panel">
+            <div class="panel-heading">
+              <h2>Review & Book</h2>
+              <span id="checkoutStatus">Select train</span>
+            </div>
+            <div id="selectedOfferSummary" class="selected-offer"></div>
+
+            <form id="addTripForm" class="booking-form">
+              <div class="form-section">
+                <h3>Passenger</h3>
+                <label>
+                  Full name
+                  <input name="passengerName" autocomplete="name" required>
+                </label>
+                <div class="split-fields">
+                  <label>
+                    Age
+                    <input name="age" type="number" min="1" max="120" value="30" required>
+                  </label>
+                  <label>
+                    Gender
+                    <select name="gender">
+                      <option value="not_specified">Not specified</option>
+                      <option value="female">Female</option>
+                      <option value="male">Male</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  Berth preference
+                  <select name="berthPreference">
+                    <option value="no_preference">No preference</option>
+                    <option value="lb">Lower</option>
+                    <option value="mb">Middle</option>
+                    <option value="ub">Upper</option>
+                    <option value="sl">Side lower</option>
+                    <option value="su">Side upper</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="form-section">
+                <h3>Contact & Assistance</h3>
+                <label>
+                  Mobile
+                  <input name="mobile" inputmode="tel" autocomplete="tel" required>
+                </label>
+                <label>
+                  Email
+                  <input name="email" type="email" autocomplete="email">
+                </label>
+                <label>
+                  Mobility
+                  <select name="mobilityProfile">
+                    <option value="standard">Standard</option>
+                    <option value="luggage">Travelling with luggage</option>
+                    <option value="senior">Senior passenger</option>
+                    <option value="wheelchair">Wheelchair support</option>
+                    <option value="family">Family group</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="form-section">
+                <h3>Payment</h3>
+                <div class="payment-options">
+                  <label class="check-row">
+                    <input type="radio" name="paymentMethod" value="upi" checked>
+                    UPI
+                  </label>
+                  <label class="check-row">
+                    <input type="radio" name="paymentMethod" value="card">
+                    Card
+                  </label>
+                  <label class="check-row">
+                    <input type="radio" name="paymentMethod" value="wallet">
+                    Wallet
+                  </label>
+                </div>
+              </div>
+
+              <button class="primary-button confirm-button" type="submit">Confirm Booking</button>
+            </form>
+          </section>
+
+          <section class="rail-panel pnr-panel">
+            <div class="panel-heading">
+              <h2>Track PNR</h2>
+              <span id="pnrStatus">Ready</span>
+            </div>
+            <form id="pnrForm" class="pnr-form">
+              <input name="pnr" id="pnrInput" inputmode="numeric" maxlength="10" autocomplete="off" placeholder="Enter 10 digit PNR">
+              <button class="ghost-button" type="submit">Track</button>
+            </form>
+          </section>
         </aside>
 
-        <section class="main-column">
-          <section class="hero-status" id="heroStatus">
+        <section class="tracking-column">
+          <section class="rail-panel hero-status" id="heroStatus">
             <div>
               <p class="eyebrow" id="heroTrain">No active journey</p>
-              <h2 id="heroTitle">Book a ticket to monitor platform changes</h2>
-              <p id="heroAction" class="next-action">Search an India route, choose an available train, and confirm the booking to start platform-change tracking.</p>
+              <h2 id="heroTitle">Your confirmed booking will appear here</h2>
+              <p id="heroAction" class="next-action">Book a train to start live platform-change alerts, walking margin, evidence, and PNR tracking.</p>
             </div>
             <div class="platform-tile" aria-label="Current platform">
               <span>Platform</span>
@@ -123,7 +200,7 @@
           <section class="insight-grid">
             <article class="rail-panel metrics-panel">
               <div class="panel-heading">
-                <h2>Risk</h2>
+                <h2>Boarding Risk</h2>
                 <span id="riskBadge" class="badge">--</span>
               </div>
               <div class="metric-row">
@@ -154,14 +231,6 @@
               <ol id="routeSteps" class="route-steps"></ol>
             </article>
 
-            <article class="rail-panel timeline-panel">
-              <div class="panel-heading">
-                <h2>Evidence</h2>
-                <span id="stateVersion">v--</span>
-              </div>
-              <div id="timeline" class="timeline"></div>
-            </article>
-
             <article class="rail-panel alert-panel">
               <div class="panel-heading">
                 <h2>Alerts</h2>
@@ -169,81 +238,79 @@
               </div>
               <div id="alerts" class="alert-list"></div>
             </article>
+
+            <article class="rail-panel timeline-panel">
+              <div class="panel-heading">
+                <h2>Evidence</h2>
+                <span id="stateVersion">v--</span>
+              </div>
+              <div id="timeline" class="timeline"></div>
+            </article>
           </section>
-        </section>
 
-        <aside class="rail-panel action-rail">
-          <div class="panel-heading">
-            <h2>Live Inputs</h2>
-            <span id="opsHealth">Healthy</span>
-          </div>
+          <details class="rail-panel signal-tools">
+            <summary>Station signal tools</summary>
+            <div class="signal-grid">
+              <form id="crowdForm" class="compact-form">
+                <h3>Crowd Report</h3>
+                <label>
+                  Platform seen
+                  <input name="reportedPlatform" id="crowdPlatform" autocomplete="off">
+                </label>
+                <label>
+                  Evidence
+                  <select name="voteKind">
+                    <option value="display_board_seen">Display board</option>
+                    <option value="announcement_heard">Announcement</option>
+                    <option value="platform_seen">Platform sign</option>
+                    <option value="train_arrived">Train arrived</option>
+                    <option value="contradiction">Contradiction</option>
+                  </select>
+                </label>
+                <label class="check-row">
+                  <input type="checkbox" name="mediaProvided">
+                  Photo hash available
+                </label>
+                <button class="primary-button" type="submit">Submit Report</button>
+              </form>
 
-          <form id="pnrForm" class="compact-form">
-            <h3>PNR Tracking</h3>
-            <label>
-              PNR
-              <input name="pnr" id="pnrInput" inputmode="numeric" maxlength="10" autocomplete="off">
-            </label>
-            <button class="primary-button" type="submit">Track Booking</button>
-          </form>
+              <form id="opsForm" class="compact-form">
+                <h3>Platform Event</h3>
+                <label>
+                  Source
+                  <select name="sourceKind">
+                    <option value="official_station">Station display</option>
+                    <option value="official_ntes">NTES feed</option>
+                    <option value="operator">Operator override</option>
+                    <option value="ai_prediction">AI prediction</option>
+                  </select>
+                </label>
+                <div class="split-fields">
+                  <label>
+                    Platform
+                    <input name="platformNumber" id="opsPlatform" autocomplete="off">
+                  </label>
+                  <label>
+                    Confidence
+                    <input name="sourceConfidence" type="number" min="0.1" max="0.99" step="0.01" value="0.94">
+                  </label>
+                </div>
+                <label>
+                  Kind
+                  <select name="assignmentKind">
+                    <option value="changed">Changed</option>
+                    <option value="confirmed">Confirmed</option>
+                    <option value="predicted">Predicted</option>
+                  </select>
+                </label>
+                <button class="danger-button" type="submit">Publish Event</button>
+              </form>
 
-          <form id="crowdForm" class="compact-form">
-            <h3>Crowd Report</h3>
-            <label>
-              Platform seen
-              <input name="reportedPlatform" id="crowdPlatform" autocomplete="off">
-            </label>
-            <label>
-              Evidence
-              <select name="voteKind">
-                <option value="display_board_seen">Display board</option>
-                <option value="announcement_heard">Announcement</option>
-                <option value="platform_seen">Platform sign</option>
-                <option value="train_arrived">Train arrived</option>
-                <option value="contradiction">Contradiction</option>
-              </select>
-            </label>
-            <label class="check-row">
-              <input type="checkbox" name="mediaProvided">
-              Photo hash available
-            </label>
-            <button class="primary-button" type="submit">Submit Report</button>
-          </form>
-
-          <form id="opsForm" class="compact-form">
-            <h3>Ops Platform Event</h3>
-            <label>
-              Source
-              <select name="sourceKind">
-                <option value="official_station">Station display</option>
-                <option value="official_ntes">NTES feed</option>
-                <option value="operator">Operator override</option>
-                <option value="ai_prediction">AI prediction</option>
-              </select>
-            </label>
-            <div class="split-fields">
-              <label>
-                Platform
-                <input name="platformNumber" id="opsPlatform" autocomplete="off">
-              </label>
-              <label>
-                Confidence
-                <input name="sourceConfidence" type="number" min="0.1" max="0.99" step="0.01" value="0.94">
-              </label>
+              <div class="ops-metrics" id="opsMetrics"></div>
             </div>
-            <label>
-              Kind
-              <select name="assignmentKind">
-                <option value="changed">Changed</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="predicted">Predicted</option>
-              </select>
-            </label>
-            <button class="danger-button" type="submit">Publish Event</button>
-          </form>
-
-          <div class="ops-metrics" id="opsMetrics"></div>
-        </aside>
+            <span id="opsHealth" class="sr-only">Healthy</span>
+          </details>
+        </section>
       </main>
     </div>
 

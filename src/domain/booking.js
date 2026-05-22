@@ -44,6 +44,10 @@ export function searchBookingOffers({ state, from, to, serviceDate, classCode })
     .map((item) => {
       const train = state.trains.find((candidate) => candidate.trainNumber === item.trainNumber);
       const run = state.trainRuns.find((candidate) => candidate.trainNumber === item.trainNumber);
+      const stop = state.trainRunStops.find((candidate) => (
+        candidate.trainRunId === run?.id &&
+        candidate.stationCode === item.fromStationCode
+      ));
       return {
         id: item.id,
         trainNumber: item.trainNumber,
@@ -63,7 +67,12 @@ export function searchBookingOffers({ state, from, to, serviceDate, classCode })
         arrivalAt: item.arrivalAt,
         journeyHours: item.journeyHours,
         status: item.availableSeats > 0 ? "AVAILABLE" : `WL ${item.waitlist}`,
-        trainRunId: run?.id
+        trainRunId: run?.id,
+        platformNumber: stop?.currentPlatform ?? null,
+        plannedPlatform: stop?.plannedPlatform ?? null,
+        platformChanged: Boolean(stop?.previousPlatform && stop.previousPlatform !== stop.currentPlatform),
+        delaySeconds: run?.currentDelaySeconds ?? 0,
+        platformConfidence: stop?.confidence ?? null
       };
     })
     .sort((a, b) => new Date(a.departureAt) - new Date(b.departureAt));
