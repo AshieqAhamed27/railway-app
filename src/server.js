@@ -151,6 +151,18 @@ function searchStations(query, limit = 15) {
   return ranked;
 }
 
+function stationSummary(station) {
+  if (!station) return null;
+  return {
+    code: station.code,
+    name: station.name,
+    city: station.city,
+    state: station.state,
+    zone: station.zone,
+    platforms: station.platforms
+  };
+}
+
 function buildLiveTrain(trainNumber) {
   const train = findTrain(trainNumber);
   const run = findTrainRun(trainNumber);
@@ -159,16 +171,27 @@ function buildLiveTrain(trainNumber) {
     .filter((stop) => stop.trainRunId === run.id)
     .sort((a, b) => a.stopSequence - b.stopSequence)
     .map((stop) => ({
-      ...stop,
-      station: findStation(stop.stationCode)
+      id: stop.id,
+      stationCode: stop.stationCode,
+      station: stationSummary(findStation(stop.stationCode)),
+      stopSequence: stop.stopSequence,
+      scheduledDeparture: stop.scheduledDeparture,
+      predictedDeparture: stop.predictedDeparture,
+      plannedPlatform: stop.plannedPlatform,
+      currentPlatform: stop.currentPlatform,
+      previousPlatform: stop.previousPlatform,
+      confidence: stop.confidence,
+      confidenceLevel: stop.confidenceLevel,
+      stateKind: stop.stateKind,
+      newestObservedAt: stop.newestObservedAt
     }));
   const nextStop = stops[0] ?? null;
   return {
     trainNumber: train.trainNumber,
     trainName: train.name,
     serviceType: train.serviceType,
-    origin: findStation(train.origin) ?? { code: train.origin },
-    destination: findStation(train.destination) ?? { code: train.destination },
+    origin: stationSummary(findStation(train.origin)) ?? { code: train.origin },
+    destination: stationSummary(findStation(train.destination)) ?? { code: train.destination },
     serviceDate: run.serviceDate,
     status: run.status,
     delaySeconds: run.currentDelaySeconds,
